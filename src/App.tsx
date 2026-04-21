@@ -124,15 +124,24 @@ export default function App() {
     setNewsLoading(true);
     try {
       const items = await fetchNews({ q: queryStr, category: activeCategory });
+      const interests = getUserInterests();
+      const hasInterests = Object.keys(interests).length > 0;
 
-      // Personalized recommendation
-      if (activeCategory === '为你推荐' && user) {
-        const interests = getUserInterests();
-        items.sort((a, b) => {
-          const scoreA = 1 + (interests[a.category] || 0) / 10;
-          const scoreB = 1 + (interests[b.category] || 0) / 10;
-          return scoreB - scoreA;
-        });
+      if (activeCategory === '为你推荐') {
+        if (hasInterests) {
+          // Old user: sort by interest-weighted score
+          items.sort((a, b) => {
+            const scoreA = 1 + (interests[a.category] || 0) / 10;
+            const scoreB = 1 + (interests[b.category] || 0) / 10;
+            return scoreB - scoreA;
+          });
+        } else {
+          // New user: sort by publication date (newest first)
+          items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        }
+      } else {
+        // Default category: sort by date
+        items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       }
 
       setNewsItems(items);
@@ -487,7 +496,7 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
-                  {['全部', ...(user ? ['为你推荐'] : []), '空气质量', '气候变化', '流行病学', '政策解读'].map(cat => (
+                  {['全部', '为你推荐', '空气质量', '气候变化', '流行病学', '政策解读'].map(cat => (
                     <button
                       key={cat}
                       onClick={() => {

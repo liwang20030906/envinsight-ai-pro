@@ -5,6 +5,7 @@ import path from "path";
 import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as ss from "simple-statistics";
+import Anthropic from "@anthropic-ai/sdk";
 
 async function startServer() {
   const app = express();
@@ -147,50 +148,129 @@ async function startServer() {
     }
   });
 
+  // ── Real Paper Crawler ──
+
+  const SEARCH_QUERIES = [
+    { query: "environmental health air pollution cardiovascular", category: "空气质量" },
+    { query: "climate change heatwave mortality public health", category: "气候变化" },
+    { query: "water quality heavy metal contamination disease", category: "饮用水" },
+    { query: "epidemiology environmental exposure risk factor", category: "流行病学" },
+    { query: "environmental policy regulation health outcome", category: "政策解读" },
+    { query: "PM2.5 respiratory disease children", category: "空气质量" },
+    { query: "microplastic human health exposure", category: "流行病学" },
+    { query: "green space urban health wellbeing", category: "气候变化" },
+  ];
+
+  const CATEGORY_MAP: Record<string, string> = {
+    "air pollution": "空气质量", "pm2.5": "空气质量", "particulate matter": "空气质量",
+    "climate change": "气候变化", "global warming": "气候变化", "heat": "气候变化",
+    "water quality": "饮用水", "drinking water": "饮用水", "water contamination": "饮用水", "heavy metal": "饮用水",
+    "epidemiolog": "流行病学", "infection": "流行病学", "disease outbreak": "流行病学",
+    "policy": "政策解读", "regulation": "政策解读", "governance": "政策解读",
+  };
+
+  function classifyCategory(title: string, abstract: string): string {
+    const text = (title + " " + abstract).toLowerCase();
+    for (const [keyword, category] of Object.entries(CATEGORY_MAP)) {
+      if (text.includes(keyword)) return category;
+    }
+    return "流行病学";
+  }
+
+  async function fetchPapersFromSemanticScholar(): Promise<any[]> {
+    const picked = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)];
+    const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(picked.query)}&fields=title,abstract,publicationDate,journal,url,year,openAccessPdf&limit=20&sort=publicationDate:desc&year=2024-`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Semantic Scholar API error: ${response.status}`);
+    const data = await response.json();
+    return (data.data || []).filter((p: any) => p.abstract && p.abstract.length > 100);
+  }
+
+  async function summarizeWithClaude(paper: { title: string; abstract: string; journal?: any }): Promise<{
+    title: string; oneSentenceSummary: string; plainTextContent: string; translatedAbstract: string;
+  }> {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return { title: paper.title, oneSentenceSummary: paper.abstract.slice(0, 100) + "...", plainTextContent: paper.abstract.slice(0, 500), translatedAbstract: paper.abstract.slice(0, 300) };
+    }
+    try {
+      const client = new Anthropic({ apiKey });
+      const journalName = paper.journal?.name || "Unknown Journal";
+      const response = await client.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1024,
+        temperature: 0.7,
+        messages: [{ role: "user", content: `你是一位资深科学记者。请将以下英文学术论文信息转化为中文新闻资讯。
+必须输出纯 JSON（不要 markdown 代码块），字段如下：
+- title: 吸引人但不过分夸张的中文标题
+- oneSentenceSummary: 通俗易懂的一句话核心发现（禁止统计术语）
+- plainTextContent: 200字以内的中文正文解读（背景+方法+发现+建议）
+- translatedAbstract: 对摘要的专业中文翻译（150字以内）
+
+论文标题: ${paper.title}
+期刊: ${journalName}
+摘要: ${paper.abstract}` }],
+      });
+      const textBlock = response.content.find((b: any) => b.type === "text");
+      const text = textBlock && textBlock.type === "text" ? textBlock.text : "{}";
+      const cleaned = text.replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
+      return JSON.parse(cleaned);
+    } catch (err) {
+      console.error("Claude summarization failed:", err);
+      return { title: paper.title, oneSentenceSummary: paper.abstract.slice(0, 100) + "...", plainTextContent: paper.abstract.slice(0, 500), translatedAbstract: paper.abstract.slice(0, 300) };
+    }
+  }
+
+  async function fetchCoverImage(query: string): Promise<string> {
+    const unsplashKey = process.env.UNSPLASH_ACCESS_KEY;
+    if (unsplashKey) {
+      try {
+        const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`;
+        const res = await fetch(url, { headers: { "Authorization": `Client-ID ${unsplashKey}` } });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results?.[0]?.urls?.regular) return data.results[0].urls.regular;
+        }
+      } catch {}
+    }
+    return `https://picsum.photos/seed/${encodeURIComponent(query.slice(0, 20))}/800/450`;
+  }
+
   app.post("/api/news/crawl", async (req, res) => {
-    // In a real app, this would trigger the Python crawler.
-    // Here we simulate adding 20 new items.
-    const topics = [
-      { t: "全球变暖对北极熊栖息地的影响", c: "气候变化" },
-      { t: "新型空气净化技术在工业区的应用", c: "空气质量" },
-      { t: "城市化进程与传染病传播的相关性", c: "流行病学" },
-      { t: "欧盟新颁布的碳排放交易准则解读", c: "政策解读" },
-      { t: "深层地下水重金属污染治理方案", c: "饮用水" },
-      { t: "极端天气事件对农业产量的长期威胁", c: "气候变化" },
-      { t: "室内甲醛暴露对儿童呼吸系统的损害", c: "空气质量" },
-      { t: "微塑料在海洋生物链中的富集效应", c: "流行病学" },
-      { t: "中国“双碳”目标下的能源结构转型", c: "政策解读" },
-      { t: "海水淡化技术在干旱地区的经济性分析", c: "饮用水" },
-      { t: "森林火灾频发与全球碳循环失衡", c: "气候变化" },
-      { t: "交通尾气排放对城市居民寿命的影响", c: "空气质量" },
-      { t: "抗生素耐药性基因在水环境中的传播", c: "流行病学" },
-      { t: "绿色建筑认证标准对节能减排的贡献", c: "政策解读" },
-      { t: "农村地区饮用水安全现状与提升策略", c: "饮用水" },
-      { t: "冰川融化导致的海平面上升预测模型", c: "气候变化" },
-      { t: "臭氧层空洞修复现状与未来展望", c: "空气质量" },
-      { t: "电子垃圾回收过程中的职业健康风险", c: "流行病学" },
-      { t: "可再生能源补贴政策的国际比较研究", c: "政策解读" },
-      { t: "智能水表在节约城市用水中的作用", c: "饮用水" }
-    ];
+    try {
+      const papers = await fetchPapersFromSemanticScholar();
+      if (papers.length === 0) return res.json([]);
 
-    const newItems = topics.map((topic, index) => ({
-      id: (Date.now() + index).toString(),
-      title: topic.t,
-      oneSentenceSummary: `这是一篇关于${topic.t}的最新研究摘要。`,
-      conceptImageUrl: `https://picsum.photos/seed/${index + 100}/800/450`,
-      plainTextContent: `详细研究显示，${topic.t}是一个复杂且紧迫的问题。科学家们正在通过多维度的数据分析来寻找解决方案。`,
-      abstract: `Abstract for ${topic.t}: This study explores the various factors influencing the current state of ${topic.t}. We utilized a comprehensive dataset spanning the last decade to identify key trends and correlations.`,
-      translatedAbstract: `摘要：本研究探讨了影响${topic.t}现状的各种因素。我们利用了过去十年的综合数据集来识别关键趋势和相关性。结果表明，采取积极的干预措施对于缓解负面影响至关重要。`,
-      sourceLink: `https://scholar.google.com/scholar?q=${encodeURIComponent(topic.t)}`,
-      sourceJournal: index % 2 === 0 ? "Nature" : "Science",
-      publishDate: new Date().toISOString().split('T')[0],
-      category: topic.c,
-      likes: Math.floor(Math.random() * 50),
-      comments: []
-    }));
-
-    newsItems = [...newItems, ...newsItems];
-    res.json(newItems);
+      const newItems = [];
+      for (let i = 0; i < Math.min(papers.length, 10); i++) {
+        const paper = papers[i];
+        const [summary, imageUrl] = await Promise.all([
+          summarizeWithClaude(paper),
+          fetchCoverImage(paper.title.slice(0, 60)),
+        ]);
+        const category = classifyCategory(paper.title, paper.abstract || "");
+        newItems.push({
+          id: `sem-${paper.paperId || Date.now() + i}`,
+          title: summary.title || paper.title,
+          oneSentenceSummary: summary.oneSentenceSummary || "",
+          conceptImageUrl: imageUrl,
+          plainTextContent: summary.plainTextContent || paper.abstract?.slice(0, 500) || "",
+          abstract: paper.abstract || "",
+          translatedAbstract: summary.translatedAbstract || "",
+          sourceLink: paper.url || `https://www.semanticscholar.org/paper/${paper.paperId}`,
+          sourceJournal: paper.journal?.name || "Unknown",
+          publishDate: paper.publicationDate || paper.year?.toString() || new Date().toISOString().split("T")[0],
+          category,
+          likes: 0,
+          comments: [],
+        });
+      }
+      newsItems = [...newItems, ...newsItems];
+      res.json(newItems);
+    } catch (error: any) {
+      console.error("Crawl failed:", error);
+      res.status(500).json({ error: "爬取失败: " + error.message });
+    }
   });
 
   // Sample Data Generation

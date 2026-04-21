@@ -60,6 +60,7 @@ import {
   updateUserInterest,
   trackEvent,
   getAnalytics,
+  isAdmin,
 } from './services/localDataService';
 import type { User as UserType } from './types';
 import jsPDF from 'jspdf';
@@ -159,8 +160,8 @@ export default function App() {
 
   const handleLoginSubmit = () => {
     if (!loginName.trim() || !loginEmail.trim()) return;
-    const u = doLogin(loginName, loginEmail);
-    setUser(u);
+    const result = doLogin(loginName, loginEmail);
+    setUser(result.user);
     setUserInterests(getUserInterests());
     setShowLoginModal(false);
     setLoginName('');
@@ -377,19 +378,21 @@ export default function App() {
                 登录
               </button>
             )}
-            <button
-              onClick={() => {
-                trackEvent('click', 'view_analytics_button');
-                setView(view === 'analytics' ? 'news' : 'analytics');
-              }}
-              className={cn(
-                "p-2 rounded-lg transition-all",
-                view === 'analytics' ? "bg-emerald-100 text-emerald-600" : "text-gray-400 hover:bg-gray-100"
-              )}
-              title="数据看板"
-            >
-              <BarChart2 size={20} />
-            </button>
+            {isAdmin(user?.email) && (
+              <button
+                onClick={() => {
+                  trackEvent('click', 'view_analytics_button');
+                  setView(view === 'analytics' ? 'news' : 'analytics');
+                }}
+                className={cn(
+                  "p-2 rounded-lg transition-all",
+                  view === 'analytics' ? "bg-emerald-100 text-emerald-600" : "text-gray-400 hover:bg-gray-100"
+                )}
+                title="数据看板"
+              >
+                <BarChart2 size={20} />
+              </button>
+            )}
             {result && view === 'workbench' && (
               <button
                 onClick={downloadPDF}

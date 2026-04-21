@@ -3,6 +3,23 @@ import { User, NewsItem, Comment, AnalyticsEvent } from "../types";
 // ── Auth ──
 
 const STORAGE_KEY = "envinsight_user";
+const USER_REGISTRY_KEY = "envinsight_user_registry";
+
+// Email → uid mapping for uniqueness
+function getRegistry(): Record<string, { uid: string; displayName: string }> {
+  const raw = localStorage.getItem(USER_REGISTRY_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+function saveRegistry(registry: Record<string, { uid: string; displayName: string }>) {
+  localStorage.setItem(USER_REGISTRY_KEY, JSON.stringify(registry));
+}
+
+export const ADMIN_EMAIL = "1649839853@qq.com";
+
+export function isAdmin(email: string | undefined | null): boolean {
+  return email === ADMIN_EMAIL;
+}
 
 export function getStoredUser(): User | null {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -17,14 +34,21 @@ export function setStoredUser(user: User | null) {
   }
 }
 
-export function login(displayName: string, email: string): User {
-  const user: User = {
-    uid: crypto.randomUUID(),
-    displayName,
-    email,
-  };
-  setStoredUser(user);
-  return user;
+export function login(displayName: string, email: string): { user: User; error?: string } {
+  const registry = getRegistry();
+  const emailLower = email.trim().toLowerCase();
+  const existing = registry[emailLower];
+
+  if (existing) {
+    // Email already registered - return existing user
+    return { user: { uid: existing.uid, displayName: existing.displayName, email: emailLower } };
+  }
+
+  // New user - register
+  const uid = crypto.randomUUID();
+  registry[emailLower] = { uid, displayName: displayName.trim() };
+  saveRegistry(registry);
+  return { user: { uid, displayName: displayName.trim(), email: emailLower } };
 }
 
 export function logout() {

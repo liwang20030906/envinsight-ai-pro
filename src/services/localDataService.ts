@@ -1,0 +1,142 @@
+import { User, NewsItem, Comment, AnalyticsEvent } from "../types";
+
+// ── Auth ──
+
+const STORAGE_KEY = "envinsight_user";
+
+export function getStoredUser(): User | null {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
+export function setStoredUser(user: User | null) {
+  if (user) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+}
+
+export function login(displayName: string, email: string): User {
+  const user: User = {
+    uid: crypto.randomUUID(),
+    displayName,
+    email,
+  };
+  setStoredUser(user);
+  return user;
+}
+
+export function logout() {
+  setStoredUser(null);
+}
+
+// ── News (via REST API) ──
+
+export async function fetchNews(params?: { q?: string; category?: string }): Promise<NewsItem[]> {
+  const sp = new URLSearchParams();
+  if (params?.q) sp.set("q", params.q);
+  if (params?.category && params.category !== "全部") sp.set("category", params.category);
+
+  const res = await fetch(`/api/news?${sp.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch news");
+  const raw = await res.json();
+
+  return raw.map((item: any) => ({
+    id: item.id,
+    title: item.title,
+    summary: item.oneSentenceSummary || item.summary || "",
+    content: item.plainTextContent || item.content || "",
+    category: item.category || "未分类",
+    date: item.publishDate || item.date || "",
+    imageUrl: item.conceptImageUrl || item.imageUrl || "",
+    likesCount: item.likes || 0,
+    sourceJournal: item.sourceJournal,
+    sourceLink: item.sourceLink,
+    comments: (item.comments || []).map((c: any) => ({
+      id: c.id,
+      userName: c.user || c.userName || "匿名用户",
+      content: c.text || c.content || "",
+      timestamp: c.date || c.timestamp || "",
+    })),
+  }));
+}
+
+export async function crawlNews(): Promise<NewsItem[]> {
+  const res = await fetch("/api/news/crawl", { method: "POST" });
+  if (!res.ok) throw new Error("Crawl failed");
+  return res.json();
+}
+
+// ── Likes (via REST API) ──
+
+export async function likeNews(newsId: string): Promise<number> {
+  const res = await fetch(`/api/news/${newsId}/like`, { method: "POST" });
+  if (!res.ok) throw new Error("Like failed");
+  const data = await res.json();
+  return data.likes;
+}
+
+// ── Comments (via REST API) ──
+
+export async function addComment(newsId: string, userName: string, text: string): Promise<Comment> {
+  const res = await fetch(`/api/news/${newsId}/comment`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user: userName, text }),
+  });
+  if (!res.ok) throw new Error("Comment failed");
+  const data = await res.json();
+  return {
+    id: data.id,
+    userName: data.user || userName,
+    content: data.text || text,
+    timestamp: data.date || new Date().toISOString().split("T")[0],
+  };
+}
+
+// ── User Interests (localStorage) ──
+
+const INTERESTS_KEY = "envinsight_interests";
+
+export function getUserInterests(): Record<string, number> {
+  const raw = localStorage.getItem(INTERESTS_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+export function updateUserInterest(category: string, weight: number) {
+  const interests = getUserInterests();
+  interests[category] = (interests[category] || 0) + weight;
+  localStorage.setItem(INTERESTS_KEY, JSON.stringify(interests));
+}
+
+// ── Analytics (local buffer + console) ──
+
+const ANALYTICS_KEY = "envinsight_analytics";
+
+function getAnalyticsBuffer(): AnalyticsEvent[] {
+  const raw = localStorage.getItem(ANALYTICS_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function trackEvent(eventName: string, elementId: string, metadata: any = {}) {
+  const events = getAnalyticsBuffer();
+  const user = getStoredUser();
+  const event: AnalyticsEvent = {
+    id: crypto.randomUUID(),
+    eventName,
+    elementId,
+    timestamp: new Date().toISOString(),
+    userId: user?.uid || "anonymous",
+    metadata,
+  };
+  events.unshift(event);
+  // Keep last 200 events
+  if (events.length > 200) events.length = 200;
+  localStorage.setItem(ANALYTICS_KEY, JSON.stringify(events));
+  console.log("[Analytics]", eventName, elementId, metadata);
+}
+
+export function getAnalytics(): AnalyticsEvent[] {
+  return getAnalyticsBuffer();
+}

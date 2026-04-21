@@ -64,8 +64,24 @@ export async function fetchNews(params?: { q?: string; category?: string }): Pro
 
 export async function crawlNews(): Promise<NewsItem[]> {
   const res = await fetch("/api/news/crawl", { method: "POST" });
-  if (!res.ok) throw new Error("Crawl failed");
-  return res.json();
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Crawl failed");
+  }
+  const raw = await res.json();
+  return raw.map((item: any) => ({
+    id: item.id,
+    title: item.title,
+    summary: item.oneSentenceSummary || item.summary || "",
+    content: item.plainTextContent || item.content || "",
+    category: item.category || "未分类",
+    date: item.publishDate || item.date || "",
+    imageUrl: item.conceptImageUrl || item.imageUrl || "",
+    likesCount: item.likes || 0,
+    sourceJournal: item.sourceJournal,
+    sourceLink: item.sourceLink,
+    comments: [],
+  }));
 }
 
 // ── Likes (via REST API) ──

@@ -175,19 +175,20 @@ export default function App() {
 
   const handleCrawl = async () => {
     trackEvent('click', 'crawl_news_button');
-    if (!user) {
-      setError('请先登录以执行此操作。');
-      handleLogin();
-      return;
-    }
 
     setNewsLoading(true);
+    setError(null);
     try {
-      await crawlNews();
-      loadNews();
+      const newItems = await crawlNews();
+      if (newItems.length === 0) {
+        setError('暂未获取到新论文，请稍后再试。');
+      } else {
+        // Directly prepend new items to existing list
+        setNewsItems(prev => [...newItems, ...prev]);
+      }
     } catch (err) {
       console.error('Crawl failed:', err);
-      setError('抓取失败：网络错误。');
+      setError('抓取失败：网络错误或 API 限流，请稍后重试。');
     } finally {
       setNewsLoading(false);
     }

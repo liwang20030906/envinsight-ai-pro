@@ -179,11 +179,25 @@ async function startServer() {
 
   async function fetchPapersFromSemanticScholar(): Promise<any[]> {
     const picked = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)];
-    const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(picked.query)}&fields=title,abstract,publicationDate,journal,url,year,openAccessPdf&limit=20&sort=publicationDate:desc&year=2024-`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Semantic Scholar API error: ${response.status}`);
-    const data = await response.json();
-    return (data.data || []).filter((p: any) => p.abstract && p.abstract.length > 100);
+    const fields = "title,abstract,publicationDate,journal,url,year,openAccessPdf,externalIds";
+    const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(picked.query)}&fields=${fields}&limit=20&sort=publicationDate:desc&year=2024-`;
+
+    // Retry up to 3 times with backoff
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        return (data.data || []).filter((p: any) => p.abstract && p.abstract.length > 100);
+      }
+      if (response.status === 429) {
+        const wait = (attempt + 1) * 3;
+        console.log(`Rate limited, retrying in ${wait}s...`);
+        await new Promise(r => setTimeout(r, wait * 1000));
+        continue;
+      }
+      throw new Error(`Semantic Scholar API error: ${response.status}`);
+    }
+    throw new Error("Semantic Scholar API rate limited after 3 retries");
   }
 
   async function summarizeWithClaude(paper: { title: string; abstract: string; journal?: any }): Promise<{
@@ -257,7 +271,7 @@ async function startServer() {
           plainTextContent: summary.plainTextContent || paper.abstract?.slice(0, 500) || "",
           abstract: paper.abstract || "",
           translatedAbstract: summary.translatedAbstract || "",
-          sourceLink: paper.url || `https://www.semanticscholar.org/paper/${paper.paperId}`,
+          sourceLink: paper.externalIds?.DOI ? `https://doi.org/${paper.externalIds.DOI}` : (paper.url || `https://www.semanticscholar.org/paper/${paper.paperId}`),
           sourceJournal: paper.journal?.name || "Unknown",
           publishDate: paper.publicationDate || paper.year?.toString() || new Date().toISOString().split("T")[0],
           category,

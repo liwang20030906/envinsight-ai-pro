@@ -1,0 +1,134 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: news
+    // Fields:
+    //   - title: string (required)
+    //   - summary: string (required)
+    //   - content: string (required)
+    //   - category: string (required)
+    //   - date: string (required)
+    //   - imageUrl: string (required)
+    //   - likesCount: number (required)
+    //
+    // Collection: news/{newsId}/likes
+    // Fields:
+    //   - newsId: string (required)
+    //   - userId: string (required)
+    //   - timestamp: timestamp (required)
+    //
+    // Collection: news/{newsId}/comments
+    // Fields:
+    //   - newsId: string (required)
+    //   - userId: string (required)
+    //   - userName: string (required)
+    //   - content: string (required)
+    //   - timestamp: timestamp (required)
+    //
+    // Collection: analytics_events
+    // Fields:
+    //   - eventName: string (required)
+    //   - elementId: string (required)
+    //   - timestamp: timestamp (required)
+    //   - userId: string (optional)
+    //   - metadata: map (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "liw08145@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidNews(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.summary is string && data.summary.size() > 0 && data.summary.size() < 1000 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
+             data.category is string && data.category.size() > 0 && data.category.size() < 50 &&
+             data.date is string && data.date.size() > 0 && data.date.size() < 50 &&
+             data.imageUrl is string && data.imageUrl.size() > 0 && data.imageUrl.size() < 500 &&
+             data.likesCount is number && data.likesCount >= 0;
+    }
+
+    function isValidLike(data) {
+      return data.newsId is string && data.newsId.size() > 0 &&
+             data.userId == request.auth.uid &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidComment(data) {
+      return data.newsId is string && data.newsId.size() > 0 &&
+             data.userId == request.auth.uid &&
+             data.userName is string && data.userName.size() > 0 && data.userName.size() < 100 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 2000 &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidAnalyticsEvent(data) {
+      return data.eventName is string && data.eventName.size() > 0 &&
+             data.elementId is string && data.elementId.size() > 0 &&
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /news/{newsId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && isValidNews(request.resource.data);
+
+      // Allow authenticated users to increment likesCount atomically
+      allow update: if isAuthenticated() &&
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount']) &&
+                    math.abs(request.resource.data.likesCount - resource.data.likesCount) == 1;
+
+      match /likes/{likeId} {
+        allow read: if true;
+        allow create: if isAuthenticated() && isValidLike(request.resource.data);
+        allow delete: if isOwner(resource.data.userId);
+      }
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuthenticated() && isValidComment(request.resource.data);
+        allow delete: if isOwner(resource.data.userId) || isAdmin();
+      }
+    }
+
+    match /analytics_events/{eventId} {
+      allow read: if isAdmin();
+      allow create: if isValidAnalyticsEvent(request.resource.data);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && request.resource.data.role == 'user';
+    }
+    
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "news": {
+      "title": "News Item",
+      "description": "A news article about the environment.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "date": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "likesCount": { "type": "number" }
+      },
+      "required": ["title", "summary", "content", "category", "date", "imageUrl", "likesCount"]
+    },
+    "likes": {
+      "title": "Like",
+      "description": "A like on a news article.",
+      "type": "object",
+      "properties": {
+        "newsId": { "type": "string" },
+        "userId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["newsId", "userId", "timestamp"]
+    },
+    "comments": {
+      "title": "Comment",
+      "description": "A comment on a news article.",
+      "type": "object",
+      "properties": {
+        "newsId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["newsId", "userId", "userName", "content", "timestamp"]
+    },
+    "analytics_events": {
+      "title": "Analytics Event",
+      "description": "A tracked user interaction event.",
+      "type": "object",
+      "properties": {
+        "eventName": { "type": "string" },
+        "elementId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["eventName", "elementId", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/news/{newsId}": {
+      "schema": "news",
+      "description": "Collection of news articles."
+    },
+    "/news/{newsId}/likes/{likeId}": {
+      "schema": "likes",
+      "description": "Likes on a specific news article."
+    },
+    "/news/{newsId}/comments/{commentId}": {
+      "schema": "comments",
+      "description": "Comments on a specific news article."
+    },
+    "/analytics_events/{eventId}": {
+      "schema": "analytics_events",
+      "description": "Collection of tracked user interaction events."
+    }
+  }
+}

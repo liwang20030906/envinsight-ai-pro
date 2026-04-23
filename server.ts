@@ -15,7 +15,7 @@ import {
 import { createCollaborationStore } from "./src/shared/collaboration";
 import { reviewCompliance } from "./src/shared/compliance";
 import { buildModelComparison, pickRegressionViewData } from "./src/shared/modeling";
-import { fetchRealNews } from "./src/shared/news";
+import { fetchRealNews, matchesNewsFilters, type RealNewsFetchOptions } from "./src/shared/news";
 import { buildDataProfile } from "./src/shared/profiling";
 import { buildPaperDraft, buildReport } from "./src/shared/reporting";
 import { calculateRegressionSummary } from "./src/shared/statistics";
@@ -110,6 +110,8 @@ async function startServer() {
   const datasets = new Map<string, ParsedDataset>();
   const auditLogs: AuditLogEntry[] = [];
   const collaborationStore = createCollaborationStore();
+  const newsRefreshTimestamps = new Map<string, number>();
+  const NEWS_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 
   function appendAudit(action: string, status: AuditLogEntry["status"], summary: string, datasetId?: string) {
     const entry: AuditLogEntry = {
@@ -141,18 +143,43 @@ async function startServer() {
   let hasHydratedRealNews = false;
   let newsRefreshInFlight: Promise<void> | null = null;
 
-  async function refreshNews(category = "全部", force = false) {
+  function shouldRefreshCategory(category: string, force = false) {
+    if (force) {
+      return true;
+    }
+    const lastRefresh = newsRefreshTimestamps.get(category) || 0;
+    return Date.now() - lastRefresh > NEWS_REFRESH_INTERVAL_MS;
+  }
+
+  async function refreshNews(options: string | RealNewsFetchOptions = "全部", force = false) {
+    const normalizedOptions: RealNewsFetchOptions =
+      typeof options === "string"
+        ? { category: options, limit: options === "全部" ? 10 : 6 }
+        : options;
+    const category = normalizedOptions.category || "全部";
+
     if (newsRefreshInFlight && !force) {
       return newsRefreshInFlight;
+    }
+    if (!shouldRefreshCategory(category, force)) {
+      return Promise.resolve();
     }
 
     newsRefreshInFlight = (async () => {
       try {
-        const fetched = await fetchRealNews(category, category === "全部" ? 10 : 6);
+        const fetched = await fetchRealNews({
+          category,
+          limit: normalizedOptions.limit || (category === "全部" ? 10 : 6),
+          openAccessOnly: normalizedOptions.openAccessOnly,
+          minCitations: normalizedOptions.minCitations,
+          publishedWithinDays: normalizedOptions.publishedWithinDays,
+          sort: normalizedOptions.sort,
+        });
         if (fetched.length > 0) {
           newsItems = mergeNewsItems(newsItems, fetched);
           hasHydratedRealNews = true;
         }
+        newsRefreshTimestamps.set(category, Date.now());
       } catch (error) {
         console.error("[News] Failed to refresh real papers, keeping cached items.", error);
       } finally {
@@ -161,6 +188,13 @@ async function startServer() {
     })();
 
     return newsRefreshInFlight;
+  }
+
+  async function refreshNewsAcrossCategories(force = false) {
+    const categories = ["全部", "空气质量", "气候变化", "流行病学", "政策解读", "饮用水"];
+    for (const category of categories) {
+      await refreshNews({ category, limit: category === "全部" ? 10 : 6 }, force);
+    }
   }
 
   // Mock News Database
@@ -247,14 +281,31 @@ async function startServer() {
   ];
 
   app.get("/api/news", async (req, res) => {
-    const { q, category } = req.query;
+    const { q, category, oa, minCitations, publishedWithinDays, sort } = req.query;
+    const categoryValue = typeof category === "string" ? category : "全部";
+    const filterOptions: RealNewsFetchOptions = {
+      category: categoryValue,
+      limit: categoryValue === "全部" ? 10 : 6,
+      openAccessOnly: oa === "true",
+      minCitations: typeof minCitations === "string" ? Number(minCitations) || 0 : 0,
+      publishedWithinDays: typeof publishedWithinDays === "string" ? Number(publishedWithinDays) || 0 : 0,
+      sort: sort === "cited" ? "cited" : "latest",
+    };
     if (!hasHydratedRealNews) {
-      await refreshNews(typeof category === "string" ? category : "全部");
+      await refreshNews(filterOptions, true);
+    } else if (shouldRefreshCategory(categoryValue)) {
+      await refreshNews(filterOptions);
     }
     let filtered = [...newsItems];
 
-    if (category && category !== '全部') {
-      filtered = filtered.filter(item => item.category === category);
+    filtered = filtered.filter((item) => matchesNewsFilters(item, filterOptions));
+
+    if (
+      filtered.length === 0 &&
+      (filterOptions.openAccessOnly || (filterOptions.minCitations || 0) > 0 || (filterOptions.publishedWithinDays || 0) > 0)
+    ) {
+      await refreshNews(filterOptions, true);
+      filtered = [...newsItems].filter((item) => matchesNewsFilters(item, filterOptions));
     }
 
     if (q) {
@@ -265,6 +316,12 @@ async function startServer() {
         item.plainTextContent.toLowerCase().includes(query) ||
         (item.translatedAbstract && item.translatedAbstract.toLowerCase().includes(query))
       );
+    }
+
+    if (filterOptions.sort === "cited") {
+      filtered.sort((a, b) => (b.citedByCount || 0) - (a.citedByCount || 0));
+    } else {
+      filtered.sort((a, b) => String(b.publishDate || "").localeCompare(String(a.publishDate || "")));
     }
 
     res.json(filtered);
@@ -301,12 +358,21 @@ async function startServer() {
 
   app.post("/api/news/crawl", async (req, res) => {
     const category = typeof req.body?.category === "string" ? req.body.category : "全部";
+    const crawlOptions: RealNewsFetchOptions = {
+      category,
+      limit: category === "全部" ? 10 : 6,
+      openAccessOnly: Boolean(req.body?.oa),
+      minCitations: Number(req.body?.minCitations) || 0,
+      publishedWithinDays: Number(req.body?.publishedWithinDays) || 0,
+      sort: req.body?.minCitations ? "cited" : "latest",
+    };
     try {
-      const newItems = await fetchRealNews(category, category === "全部" ? 10 : 6);
+      const newItems = await fetchRealNews(crawlOptions);
       if (newItems.length > 0) {
         newsItems = mergeNewsItems(newsItems, newItems);
         hasHydratedRealNews = true;
       }
+      newsRefreshTimestamps.set(category, Date.now());
       res.json(newItems);
     } catch (error: any) {
       res.status(502).json({ error: error.message || "Real paper crawl failed." });
@@ -759,6 +825,14 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    setInterval(() => {
+      refreshNewsAcrossCategories().catch((error) => {
+        console.error("[News] Scheduled refresh failed.", error);
+      });
+    }, NEWS_REFRESH_INTERVAL_MS);
+    refreshNewsAcrossCategories(true).catch((error) => {
+      console.error("[News] Initial scheduled refresh failed.", error);
+    });
   });
 }
 

@@ -229,6 +229,43 @@ export interface NewsItem {
   sourceLink?: string;
   sourceJournal?: string;
   comments?: Comment[];
+  isOpenAccess?: boolean;
+  publicationYear?: number;
+}
+
+export interface NewsFilters {
+  openAccessOnly: boolean;
+  highlyCitedOnly: boolean;
+  recentOnly: boolean;
+}
+
+export interface ImportedResearchLead {
+  id: string;
+  importedAt: string;
+  title: string;
+  category: string;
+  summary: string;
+  translatedAbstract?: string;
+  sourceJournal?: string;
+  sourceLink?: string;
+  authors: string[];
+  citedByCount?: number;
+  isOpenAccess?: boolean;
+  publicationYear?: number;
+  researchQuestion: string;
+  hypothesis: string;
+  suggestedDataset: "regression" | "classification" | "time-series";
+  suggestedModels: string[];
+  dataNeeds: string[];
+  collaborationTasks: string[];
+  readerTakeaways: string[];
+}
+
+export interface WorkbenchFeedbackBrief {
+  headline: string;
+  summary: string;
+  highlights: string[];
+  caution: string;
 }
 
 export interface AnalyticsEvent {

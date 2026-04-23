@@ -53,7 +53,9 @@ import {
   AnalysisMode,
   CollaborationRole,
   CollaborationRoom,
+  ImportedResearchLead,
   NewsItem,
+  NewsFilters,
   Comment,
   AnalyticsEvent,
   ComplianceGuidance,
@@ -62,6 +64,7 @@ import {
   GeneratedReport,
   PaperDraft,
   AuditLogEntry,
+  WorkbenchFeedbackBrief,
 } from './types';
 import { discussWithAI, getAIAnalysisStream, getWhatIfAnalysis } from './services/aiService';
 import {
@@ -80,7 +83,9 @@ import {
   crawlNews,
   likeNews,
   addComment,
+  getStoredImportedLead,
   getUserInterests,
+  setStoredImportedLead,
   updateUserInterest,
   trackEvent,
   getAnalytics,
@@ -93,6 +98,7 @@ import {
   generateReport,
   reviewDataset,
 } from './services/workbenchService';
+import { buildImportedResearchLead, buildWorkbenchFeedbackBrief } from './shared/researchBridge';
 import type { User as UserType } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -103,6 +109,11 @@ function cn(...inputs: ClassValue[]) {
 }
 
 const NEWS_CATEGORIES = ["空气质量", "气候变化", "流行病学", "政策解读", "饮用水"];
+const DEFAULT_NEWS_FILTERS: NewsFilters = {
+  openAccessOnly: false,
+  highlyCitedOnly: false,
+  recentOnly: false,
+};
 const SAMPLE_DATASETS = [
   { id: 'regression', title: '连续型回归', description: 'PM2.5 与疾病率的线性关系，适合看回归、What-If 和论文初稿。' },
   { id: 'classification', title: '二分类风险', description: '生物标志物 + 风险标签，适合预览分类模型对比与推荐。' },
@@ -137,10 +148,13 @@ export default function App() {
   const [discussionMessages, setDiscussionMessages] = useState<DiscussionMessage[]>([]);
   const [discussionLoading, setDiscussionLoading] = useState(false);
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+  const [newsFilters, setNewsFilters] = useState<NewsFilters>(DEFAULT_NEWS_FILTERS);
   const [userInterests, setUserInterests] = useState<Record<string, number>>({});
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState('全部');
+  const [importedLead, setImportedLead] = useState<ImportedResearchLead | null>(null);
+  const [workbenchFeedback, setWorkbenchFeedback] = useState<WorkbenchFeedbackBrief | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [view, setView] = useState<'news' | 'workbench' | 'analytics'>('news');
@@ -168,6 +182,10 @@ export default function App() {
       setUserInterests(getUserInterests());
       setCollabName((prev) => prev || stored.displayName);
     }
+    const storedLead = getStoredImportedLead();
+    if (storedLead) {
+      setImportedLead(storedLead);
+    }
   }, []);
 
   useEffect(() => {
@@ -177,7 +195,7 @@ export default function App() {
     if (view === 'news') {
       loadNews(searchQuery);
     }
-  }, [view, activeCategory]);
+  }, [view, activeCategory, newsFilters]);
 
   useEffect(() => {
     if (result) {
@@ -188,6 +206,10 @@ export default function App() {
   useEffect(() => {
     setSelectedModelId(result?.modelComparison?.bestModelId || null);
   }, [result?.modelComparison?.bestModelId]);
+
+  useEffect(() => {
+    setWorkbenchFeedback(result ? buildWorkbenchFeedbackBrief(result, importedLead) : null);
+  }, [result, importedLead]);
 
   useEffect(() => {
     const intro =
@@ -251,7 +273,7 @@ export default function App() {
   const loadNews = async (queryStr?: string) => {
     setNewsLoading(true);
     try {
-      const items = await fetchNews({ q: queryStr, category: activeCategory });
+      const items = await fetchNews({ q: queryStr, category: activeCategory, filters: newsFilters });
 
       // Personalized recommendation
       if (activeCategory === '为你推荐' && user) {
@@ -270,6 +292,14 @@ export default function App() {
     } finally {
       setNewsLoading(false);
     }
+  };
+
+  const toggleNewsFilter = (key: keyof NewsFilters) => {
+    trackEvent('click', 'news_filter_toggle', { filter: key, enabled: !newsFilters[key] });
+    setNewsFilters((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
   };
 
   const resetWorkbenchOutputs = () => {
@@ -340,7 +370,7 @@ export default function App() {
 
     setNewsLoading(true);
     try {
-      await crawlNews(activeCategory === '为你推荐' ? '全部' : activeCategory);
+      await crawlNews(activeCategory === '为你推荐' ? '全部' : activeCategory, newsFilters);
       loadNews();
     } catch (err) {
       console.error('Crawl failed:', err);
@@ -373,6 +403,65 @@ export default function App() {
     } catch (err: any) {
       setError(err.message || '示例数据加载失败');
     }
+  };
+
+  const handleImportNewsToWorkbench = (item: NewsItem) => {
+    const lead = buildImportedResearchLead(item);
+    setImportedLead(lead);
+    setStoredImportedLead(lead);
+    setSelectedNews(item);
+    setView('workbench');
+    setMode('researcher');
+    setDiscussionOpen(true);
+    setDiscussionInput(`请基于导入论文《${item.title}》帮我梳理研究问题、变量设计和第一轮分析路线。`);
+    trackEvent('click', 'import_news_to_workbench', { newsId: item.id, category: item.category });
+  };
+
+  const clearImportedLead = () => {
+    setImportedLead(null);
+    setStoredImportedLead(null);
+    trackEvent('click', 'clear_imported_lead');
+  };
+
+  const handleRunImportedLeadSample = async () => {
+    if (!importedLead) return;
+    await handleLoadSampleDataset(importedLead.suggestedDataset);
+  };
+
+  const handleSyncLeadToCollaboration = async () => {
+    if (!importedLead) return;
+    if (!collabMemberId || !collabRoomId) {
+      setView('workbench');
+      setError('请先加入一个协作房间，再同步论文拆解任务。');
+      return;
+    }
+
+    if (canCreateTask) {
+      setCollabLoading(true);
+      try {
+        let latestRoom = collabRoom;
+        for (const task of importedLead.collaborationTasks.slice(0, 3)) {
+          const payload = await addCollaborationTask({
+            roomId: collabRoomId,
+            memberId: collabMemberId,
+            title: task,
+            ownerName: collabName || user?.displayName || 'Research Guest',
+          });
+          latestRoom = payload.room;
+        }
+        if (latestRoom) {
+          setCollabRoom(latestRoom);
+        }
+      } catch (err: any) {
+        setError(err.message || '同步协作任务失败');
+      } finally {
+        setCollabLoading(false);
+      }
+      return;
+    }
+
+    setCollabNoteInput(importedLead.collaborationTasks.map((task, index) => `${index + 1}. ${task}`).join('\n'));
+    setError('当前角色不能直接创建任务，我已把推荐任务放进备注框，方便提交给 lead/reviewer。');
   };
 
   const handleJoinCollaboration = async () => {
@@ -824,6 +913,7 @@ export default function App() {
               onBack={() => setSelectedNews(null)}
               user={user}
               onLogin={handleLogin}
+              onImportToWorkbench={() => handleImportNewsToWorkbench(selectedNews)}
             />
           ) : (
             <div className="space-y-8">
@@ -844,6 +934,29 @@ export default function App() {
                       }}
                     />
                   </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {[
+                      { key: 'openAccessOnly', label: '仅开放获取 OA' },
+                      { key: 'highlyCitedOnly', label: '高被引优先' },
+                      { key: 'recentOnly', label: '近一年' },
+                    ].map((filter) => (
+                      <button
+                        key={filter.key}
+                        onClick={() => toggleNewsFilter(filter.key as keyof NewsFilters)}
+                        className={cn(
+                          "px-3 py-2 rounded-full text-xs font-bold transition-all border",
+                          newsFilters[filter.key as keyof NewsFilters]
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                        )}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs text-gray-500">
+                    资讯流会按分类拉取真实论文，并每 30 分钟自动刷新；导入工作台后可继续做建模、协作和论文初稿。
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
@@ -968,6 +1081,58 @@ export default function App() {
                   ))}
                 </div>
               </div>
+
+              {importedLead && (
+                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">资讯 → 科研工作台</p>
+                      <h3 className="text-sm font-bold text-gray-900 mt-1">{importedLead.title}</h3>
+                      <p className="text-xs text-gray-600 mt-2 leading-relaxed">{importedLead.researchQuestion}</p>
+                    </div>
+                    <button
+                      onClick={clearImportedLead}
+                      className="text-xs font-bold text-gray-400 hover:text-gray-700"
+                    >
+                      清除
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
+                      推荐样本 {importedLead.suggestedDataset}
+                    </span>
+                    {importedLead.isOpenAccess && (
+                      <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
+                        Open Access
+                      </span>
+                    )}
+                    {importedLead.citedByCount != null && (
+                      <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
+                        被引 {importedLead.citedByCount}
+                      </span>
+                    )}
+                  </div>
+
+                  <KeyValueList title="建议先准备的数据" items={importedLead.dataNeeds.slice(0, 3)} />
+                  <KeyValueList title="推荐模型路线" items={importedLead.suggestedModels} />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      onClick={handleRunImportedLeadSample}
+                      className="px-4 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-black transition-all"
+                    >
+                      跑推荐示例数据
+                    </button>
+                    <button
+                      onClick={handleSyncLeadToCollaboration}
+                      className="px-4 py-2.5 rounded-xl border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-white transition-all"
+                    >
+                      同步到协作研究室
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {error && (
                 <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-3">
@@ -1697,6 +1862,38 @@ export default function App() {
             <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Newspaper size={20} className="text-emerald-600" />
+                  研究结果回流资讯
+                </h2>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">News Loop</span>
+              </div>
+              <div className="p-6">
+                {workbenchFeedback ? (
+                  <div className="space-y-5">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">{workbenchFeedback.headline}</h3>
+                      <p className="text-sm text-gray-600 mt-2 leading-relaxed">{workbenchFeedback.summary}</p>
+                    </div>
+                    <KeyValueList title="适合回流到资讯侧的亮点" items={workbenchFeedback.highlights} />
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                      <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-2">发布前提醒</p>
+                      <p className="text-sm text-amber-900 leading-relaxed">{workbenchFeedback.caution}</p>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      这块用于把科研工作台里的分析结果重新整理成大众资讯摘要，实现“论文线索 → 本地验证 → 公众解读”的闭环。
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    先导入一篇资讯论文，或先完成一次工作台分析；系统会把结果整理成可回流到资讯侧的公众版摘要。
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
                   <FileText size={20} className="text-emerald-600" />
                   结构化报告
                 </h2>
@@ -2114,6 +2311,18 @@ function NewsStrip({ item, onClick }: { item: NewsItem; onClick: () => void }) {
           <span className="text-emerald-600">{item.category}</span>
           <span className="mx-1">&bull;</span>
           {item.date}
+          {item.isOpenAccess ? (
+            <>
+              <span className="mx-1">&bull;</span>
+              <span className="text-emerald-600">OA</span>
+            </>
+          ) : null}
+          {item.citedByCount != null ? (
+            <>
+              <span className="mx-1">&bull;</span>
+              <span className="normal-case">被引 {item.citedByCount}</span>
+            </>
+          ) : null}
           {item.sourceJournal ? (
             <>
               <span className="mx-1">&bull;</span>
@@ -2163,6 +2372,8 @@ function NewsCard({ item, featured, onClick }: { item: NewsItem; featured?: bool
             <Globe size={10} />
             <Calendar size={10} />
             {item.date}
+            {item.isOpenAccess ? <span className="text-emerald-600">OA</span> : null}
+            {item.citedByCount != null ? <span className="normal-case">被引 {item.citedByCount}</span> : null}
             {item.sourceJournal ? <span className="normal-case truncate max-w-[140px]">{item.sourceJournal}</span> : null}
           </div>
           <h3 className={cn("font-bold text-gray-900 leading-tight group-hover:text-emerald-600 transition-colors", featured ? "text-2xl mb-3" : "text-lg mb-2")}>
@@ -2302,7 +2513,19 @@ function CommentSection({ newsId, initialComments }: { newsId: string; initialCo
   );
 }
 
-function NewsDetail({ item, onBack, user, onLogin }: { item: NewsItem; onBack: () => void; user: UserType | null; onLogin: () => void }) {
+function NewsDetail({
+  item,
+  onBack,
+  user,
+  onLogin,
+  onImportToWorkbench,
+}: {
+  item: NewsItem;
+  onBack: () => void;
+  user: UserType | null;
+  onLogin: () => void;
+  onImportToWorkbench: () => void;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -2317,6 +2540,18 @@ function NewsDetail({ item, onBack, user, onLogin }: { item: NewsItem; onBack: (
         <div className="flex items-center gap-3">
           <LikeButton newsId={item.id} initialLikes={item.likesCount || 0} />
           <div className="h-6 w-px bg-gray-100 mx-1" />
+          <button
+            onClick={() => {
+              if (!user) {
+                onLogin();
+                return;
+              }
+              onImportToWorkbench();
+            }}
+            className="bg-gray-900 text-white px-4 py-1.5 rounded-full text-xs font-bold transition-all hover:bg-black"
+          >
+            导入科研工作台
+          </button>
           <button
             onClick={() => trackEvent('click', 'share_news_button', { newsId: item.id })}
             className="bg-emerald-600 text-white px-4 py-1.5 rounded-full text-xs font-bold transition-all hover:bg-emerald-700"
@@ -2421,6 +2656,11 @@ function NewsDetail({ item, onBack, user, onLogin }: { item: NewsItem; onBack: (
             {item.citedByCount != null && (
               <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full font-medium">
                 被引用 {item.citedByCount} 次
+              </span>
+            )}
+            {item.isOpenAccess && (
+              <span className="text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full font-medium">
+                Open Access
               </span>
             )}
             {item.authors && item.authors.length > 0 && (

@@ -1,4 +1,4 @@
-import { User, NewsItem, Comment, AnalyticsEvent } from "../types";
+import { User, NewsItem, Comment, AnalyticsEvent, ImportedResearchLead, NewsFilters } from "../types";
 
 // ── Auth ──
 
@@ -33,10 +33,14 @@ export function logout() {
 
 // ── News (via REST API) ──
 
-export async function fetchNews(params?: { q?: string; category?: string }): Promise<NewsItem[]> {
+export async function fetchNews(params?: { q?: string; category?: string; filters?: NewsFilters }): Promise<NewsItem[]> {
   const sp = new URLSearchParams();
   if (params?.q) sp.set("q", params.q);
   if (params?.category && params.category !== "全部") sp.set("category", params.category);
+  if (params?.filters?.openAccessOnly) sp.set("oa", "true");
+  if (params?.filters?.highlyCitedOnly) sp.set("minCitations", "25");
+  if (params?.filters?.recentOnly) sp.set("publishedWithinDays", "365");
+  if (params?.filters?.highlyCitedOnly) sp.set("sort", "cited");
 
   const res = await fetch(`/api/news?${sp.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch news");
@@ -58,6 +62,8 @@ export async function fetchNews(params?: { q?: string; category?: string }): Pro
     explainers: item.explainers,
     sourceJournal: item.sourceJournal,
     sourceLink: item.sourceLink,
+    isOpenAccess: item.isOpenAccess,
+    publicationYear: item.publicationYear,
     comments: (item.comments || []).map((c: any) => ({
       id: c.id,
       userName: c.user || c.userName || "匿名用户",
@@ -67,11 +73,16 @@ export async function fetchNews(params?: { q?: string; category?: string }): Pro
   }));
 }
 
-export async function crawlNews(category?: string): Promise<NewsItem[]> {
+export async function crawlNews(category?: string, filters?: NewsFilters): Promise<NewsItem[]> {
   const res = await fetch("/api/news/crawl", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ category: category || "全部" }),
+    body: JSON.stringify({
+      category: category || "全部",
+      oa: filters?.openAccessOnly || false,
+      minCitations: filters?.highlyCitedOnly ? 25 : 0,
+      publishedWithinDays: filters?.recentOnly ? 365 : undefined,
+    }),
   });
   if (!res.ok) throw new Error("Crawl failed");
   return res.json();
@@ -148,4 +159,21 @@ export function trackEvent(eventName: string, elementId: string, metadata: any =
 
 export function getAnalytics(): AnalyticsEvent[] {
   return getAnalyticsBuffer();
+}
+
+// ── News -> Workbench Bridge ──
+
+const IMPORTED_LEAD_KEY = "envinsight_imported_research_lead";
+
+export function getStoredImportedLead(): ImportedResearchLead | null {
+  const raw = localStorage.getItem(IMPORTED_LEAD_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
+export function setStoredImportedLead(lead: ImportedResearchLead | null) {
+  if (lead) {
+    localStorage.setItem(IMPORTED_LEAD_KEY, JSON.stringify(lead));
+  } else {
+    localStorage.removeItem(IMPORTED_LEAD_KEY);
+  }
 }

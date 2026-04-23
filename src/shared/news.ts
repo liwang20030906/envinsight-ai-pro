@@ -1,5 +1,14 @@
 import { buildLocalPaperNewsDigest, generatePaperNewsDigest } from "./ai";
 
+export type RealNewsFetchOptions = {
+  category: string;
+  limit?: number;
+  openAccessOnly?: boolean;
+  minCitations?: number;
+  publishedWithinDays?: number;
+  sort?: "latest" | "cited";
+};
+
 type OpenAlexAuthor = {
   author?: {
     display_name?: string;
@@ -18,6 +27,7 @@ type OpenAlexWork = {
   id?: string;
   title?: string;
   publication_date?: string | null;
+  publication_year?: number | null;
   doi?: string | null;
   cited_by_count?: number;
   primary_location?: OpenAlexLocation | null;
@@ -25,6 +35,9 @@ type OpenAlexWork = {
   authorships?: OpenAlexAuthor[];
   primary_topic?: {
     display_name?: string;
+  } | null;
+  open_access?: {
+    is_oa?: boolean | null;
   } | null;
 };
 
@@ -52,9 +65,13 @@ type NewsSeed = {
     everydayMeaning: string;
     readerActions: string[];
   };
+  isOpenAccess?: boolean;
+  publicationYear?: number;
 };
 
 const OPEN_ALEX_BASE = "https://api.openalex.org/works";
+const DEFAULT_RECENT_DAYS = 365;
+const DEFAULT_HIGH_CITATION_THRESHOLD = 25;
 
 const CATEGORY_QUERY: Record<string, string> = {
   空气质量: "air pollution pm2.5 environmental health",
@@ -67,6 +84,24 @@ const CATEGORY_QUERY: Record<string, string> = {
 
 function createId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeFetchOptions(categoryOrOptions: string | RealNewsFetchOptions, limit = 8): Required<RealNewsFetchOptions> {
+  const base = typeof categoryOrOptions === "string" ? { category: categoryOrOptions, limit } : categoryOrOptions;
+  return {
+    category: base.category || "全部",
+    limit: Math.max(1, base.limit || limit || 8),
+    openAccessOnly: Boolean(base.openAccessOnly),
+    minCitations: Math.max(0, base.minCitations || 0),
+    publishedWithinDays: Math.max(0, base.publishedWithinDays || 0),
+    sort: base.sort === "cited" ? "cited" : "latest",
+  };
+}
+
+function formatDateDaysAgo(days: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
 }
 
 export function reconstructAbstract(abstractIndex?: Record<string, number[]> | null): string {
@@ -106,18 +141,63 @@ export function deriveCategory(title: string, topic?: string | null): string {
   return "空气质量";
 }
 
-function buildOpenAlexUrl(category: string, limit: number): string {
+export function matchesNewsFilters(
+  item: Pick<NewsSeed, "category" | "citedByCount" | "publishDate" | "isOpenAccess">,
+  options?: Partial<RealNewsFetchOptions>,
+): boolean {
+  if (!options) {
+    return true;
+  }
+
+  if (options.category && options.category !== "全部" && item.category !== options.category) {
+    return false;
+  }
+  if (options.openAccessOnly && !item.isOpenAccess) {
+    return false;
+  }
+  if (options.minCitations && (item.citedByCount || 0) < options.minCitations) {
+    return false;
+  }
+  if (options.publishedWithinDays) {
+    const threshold = formatDateDaysAgo(options.publishedWithinDays);
+    if (!item.publishDate || item.publishDate < threshold) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function buildOpenAlexUrl(options: Required<RealNewsFetchOptions>): string {
+  const filters = [
+    "has_abstract:true",
+    "is_paratext:false",
+    "type:article",
+    "language:en",
+  ];
+
+  if (options.openAccessOnly) {
+    filters.push("open_access.is_oa:true");
+  }
+  if (options.minCitations > 0) {
+    filters.push(`cited_by_count:>${options.minCitations - 1}`);
+  }
+  if (options.publishedWithinDays > 0) {
+    filters.push(`from_publication_date:${formatDateDaysAgo(options.publishedWithinDays)}`);
+  }
+
   const params = new URLSearchParams({
-    search: CATEGORY_QUERY[category] || CATEGORY_QUERY["全部"],
-    filter: "has_abstract:true,is_paratext:false,type:article,language:en",
-    sort: "publication_date:desc",
-    "per-page": String(limit),
+    search: CATEGORY_QUERY[options.category] || CATEGORY_QUERY["全部"],
+    filter: filters.join(","),
+    sort: options.sort === "cited" ? "cited_by_count:desc" : "publication_date:desc",
+    "per-page": String(options.limit),
   });
+
   return `${OPEN_ALEX_BASE}?${params.toString()}`;
 }
 
-export async function fetchOpenAlexWorks(category: string, limit = 8): Promise<OpenAlexWork[]> {
-  const response = await fetch(buildOpenAlexUrl(category, limit), {
+export async function fetchOpenAlexWorks(categoryOrOptions: string | RealNewsFetchOptions, limit = 8): Promise<OpenAlexWork[]> {
+  const options = normalizeFetchOptions(categoryOrOptions, limit);
+  const response = await fetch(buildOpenAlexUrl(options), {
     headers: {
       Accept: "application/json",
     },
@@ -185,11 +265,22 @@ export async function buildNewsItemFromOpenAlexWork(work: OpenAlexWork): Promise
       everydayMeaning: digest.result.everydayMeaning,
       readerActions: digest.result.readerActions,
     },
+    isOpenAccess: Boolean(work.open_access?.is_oa),
+    publicationYear: work.publication_year || undefined,
   };
 }
 
-export async function fetchRealNews(category: string, limit = 8): Promise<NewsSeed[]> {
-  const works = await fetchOpenAlexWorks(category, limit);
+export async function fetchRealNews(categoryOrOptions: string | RealNewsFetchOptions, limit = 8): Promise<NewsSeed[]> {
+  const options = normalizeFetchOptions(categoryOrOptions, limit);
+  const effectiveOptions = {
+    ...options,
+    publishedWithinDays:
+      options.publishedWithinDays || (options.category === "全部" && options.minCitations === 0 ? DEFAULT_RECENT_DAYS : 0),
+    minCitations: options.minCitations || (options.sort === "cited" ? DEFAULT_HIGH_CITATION_THRESHOLD : 0),
+  };
+  const works = await fetchOpenAlexWorks(effectiveOptions, effectiveOptions.limit);
   const items = await Promise.all(works.map((work) => buildNewsItemFromOpenAlexWork(work)));
-  return items.filter((item): item is NewsSeed => Boolean(item));
+  return items.filter((item): item is NewsSeed => Boolean(item)).filter((item) => matchesNewsFilters(item, effectiveOptions));
 }
+
+export { DEFAULT_HIGH_CITATION_THRESHOLD, DEFAULT_RECENT_DAYS };

@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildNewsItemFromOpenAlexWork, deriveCategory, reconstructAbstract } from "../src/shared/news";
+import {
+  buildNewsItemFromOpenAlexWork,
+  deriveCategory,
+  matchesNewsFilters,
+  reconstructAbstract,
+} from "../src/shared/news";
 
 test("reconstructAbstract rebuilds the abstract from OpenAlex index", () => {
   const abstract = reconstructAbstract({
@@ -26,6 +31,10 @@ test("buildNewsItemFromOpenAlexWork transforms a real work shape into a news ite
     publication_date: "2026-01-01",
     doi: "https://doi.org/10.1000/example",
     cited_by_count: 20,
+    publication_year: 2026,
+    open_access: {
+      is_oa: true,
+    },
     primary_location: {
       landing_page_url: "https://doi.org/10.1000/example",
       source: {
@@ -52,5 +61,28 @@ test("buildNewsItemFromOpenAlexWork transforms a real work shape into a news ite
   assert.ok(item);
   assert.equal(item?.sourceJournal, "Environmental Health");
   assert.equal(item?.authors?.[0], "Alice");
+  assert.equal(item?.isOpenAccess, true);
+  assert.equal(item?.publicationYear, 2026);
   assert.ok(item?.explainers?.keyFindings.length);
+});
+
+test("matchesNewsFilters applies OA, citation and recency rules", () => {
+  const item = {
+    category: "空气质量",
+    citedByCount: 40,
+    publishDate: new Date().toISOString().slice(0, 10),
+    isOpenAccess: true,
+  };
+
+  assert.equal(
+    matchesNewsFilters(item, {
+      category: "空气质量",
+      openAccessOnly: true,
+      minCitations: 25,
+      publishedWithinDays: 365,
+    }),
+    true,
+  );
+  assert.equal(matchesNewsFilters({ ...item, isOpenAccess: false }, { openAccessOnly: true }), false);
+  assert.equal(matchesNewsFilters({ ...item, citedByCount: 5 }, { minCitations: 25 }), false);
 });

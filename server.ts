@@ -412,52 +412,61 @@ async function startServer() {
   app.post("/api/collaboration/:roomId/notes", (req, res) => {
     try {
       const roomId = req.params.roomId;
-      const { authorId, authorName, content, kind } = req.body || {};
-      if (typeof authorId !== "string" || typeof authorName !== "string" || typeof content !== "string" || !content.trim()) {
-        return res.status(400).json({ error: "Author and content are required." });
+      const { memberId, authorName, content, kind } = req.body || {};
+      if (typeof memberId !== "string" || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ error: "Member and content are required." });
       }
 
       const room = collaborationStore.addNote({
         roomId,
-        authorId,
-        authorName,
+        memberId,
+        authorName: typeof authorName === "string" ? authorName : undefined,
         content: content.trim(),
         kind: kind === "decision" || kind === "update" ? kind : "note",
       });
-      appendAudit("collaboration_note", "success", `${authorName} 添加了协作备注。`, room.datasetId);
+      appendAudit("collaboration_note", "success", `${authorName || memberId} 添加了协作备注。`, room.datasetId);
       res.json({ room });
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to add collaboration note." });
+      res.status(400).json({ error: error.message || "Failed to add collaboration note." });
     }
   });
 
   app.post("/api/collaboration/:roomId/tasks", (req, res) => {
     try {
       const roomId = req.params.roomId;
-      const { title, ownerName } = req.body || {};
-      if (typeof title !== "string" || !title.trim()) {
+      const { memberId, title, ownerName } = req.body || {};
+      if (typeof memberId !== "string" || typeof title !== "string" || !title.trim()) {
         return res.status(400).json({ error: "Task title is required." });
       }
 
       const room = collaborationStore.addTask({
         roomId,
+        memberId,
         title: title.trim(),
         ownerName: typeof ownerName === "string" ? ownerName : undefined,
       });
       appendAudit("collaboration_task", "success", `协作任务已创建：${title.trim()}`, room.datasetId);
       res.json({ room });
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to add collaboration task." });
+      res.status(400).json({ error: error.message || "Failed to add collaboration task." });
     }
   });
 
   app.post("/api/collaboration/:roomId/tasks/:taskId/toggle", (req, res) => {
     try {
-      const room = collaborationStore.toggleTask(req.params.roomId, req.params.taskId);
+      const { memberId } = req.body || {};
+      if (typeof memberId !== "string") {
+        return res.status(400).json({ error: "Member is required." });
+      }
+      const room = collaborationStore.toggleTask({
+        roomId: req.params.roomId,
+        taskId: req.params.taskId,
+        memberId,
+      });
       appendAudit("collaboration_task_toggle", "success", `协作任务状态已切换：${req.params.taskId}`, room.datasetId);
       res.json({ room });
     } catch (error: any) {
-      res.status(404).json({ error: error.message || "Failed to toggle collaboration task." });
+      res.status(400).json({ error: error.message || "Failed to toggle collaboration task." });
     }
   });
 

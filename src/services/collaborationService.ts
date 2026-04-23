@@ -32,8 +32,8 @@ export async function joinCollaborationRoom(input: {
 
 export async function addCollaborationNote(input: {
   roomId: string;
-  authorId: string;
-  authorName: string;
+  memberId: string;
+  authorName?: string;
   content: string;
   kind?: "note" | "decision" | "update";
 }): Promise<{ room: CollaborationRoom }> {
@@ -49,6 +49,7 @@ export async function addCollaborationNote(input: {
 
 export async function addCollaborationTask(input: {
   roomId: string;
+  memberId: string;
   title: string;
   ownerName?: string;
 }): Promise<{ room: CollaborationRoom }> {
@@ -62,11 +63,19 @@ export async function addCollaborationTask(input: {
   return parseJSONResponse(response);
 }
 
-export async function toggleCollaborationTask(roomId: string, taskId: string): Promise<{ room: CollaborationRoom }> {
+export async function toggleCollaborationTask(
+  roomId: string,
+  taskId: string,
+  memberId: string,
+): Promise<{ room: CollaborationRoom }> {
   const response = await fetch(
     `/api/collaboration/${encodeURIComponent(roomId)}/tasks/${encodeURIComponent(taskId)}/toggle`,
     {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ memberId }),
     },
   );
   return parseJSONResponse(response);

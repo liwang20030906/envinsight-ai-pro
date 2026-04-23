@@ -159,6 +159,10 @@ export default function App() {
 
   useEffect(() => {
     const stored = getStoredUser();
+    const roomFromUrl = new URLSearchParams(window.location.search).get('room');
+    if (roomFromUrl) {
+      setCollabRoomId(roomFromUrl);
+    }
     if (stored) {
       setUser(stored);
       setUserInterests(getUserInterests());
@@ -390,6 +394,9 @@ export default function App() {
       setCollabRoom(payload.room);
       setCollabMemberId(payload.member.id);
       setCollabName(nextName);
+      const params = new URLSearchParams(window.location.search);
+      params.set('room', collabRoomId.trim());
+      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
     } catch (err: any) {
       setError(err.message || '加入协作房间失败');
     } finally {
@@ -403,7 +410,7 @@ export default function App() {
     try {
       const payload = await addCollaborationNote({
         roomId: collabRoomId,
-        authorId: collabMemberId,
+        memberId: collabMemberId,
         authorName: collabName || user?.displayName || 'Research Guest',
         content: collabNoteInput.trim(),
         kind,
@@ -423,6 +430,7 @@ export default function App() {
     try {
       const payload = await addCollaborationTask({
         roomId: collabRoomId,
+        memberId: collabMemberId,
         title: collabTaskInput.trim(),
         ownerName: collabName || user?.displayName || 'Research Guest',
       });
@@ -436,12 +444,21 @@ export default function App() {
   };
 
   const handleToggleCollaborationTask = async (taskId: string) => {
-    if (!collabRoomId) return;
+    if (!collabRoomId || !collabMemberId) return;
     try {
-      const payload = await toggleCollaborationTask(collabRoomId, taskId);
+      const payload = await toggleCollaborationTask(collabRoomId, taskId, collabMemberId);
       setCollabRoom(payload.room);
     } catch (err: any) {
       setError(err.message || '协作任务更新失败');
+    }
+  };
+
+  const copyCollaborationLink = async () => {
+    const url = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(collabRoomId)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt('复制这个邀请链接', url);
     }
   };
 
@@ -645,6 +662,10 @@ export default function App() {
   };
 
   const selectedModel = result?.modelComparison?.runs.find((run) => run.id === selectedModelId) || result?.modelComparison?.runs[0] || null;
+  const currentCollabMember = collabRoom?.members.find((member) => member.id === collabMemberId) || null;
+  const canCreateDecision = currentCollabMember?.role === 'lead' || currentCollabMember?.role === 'reviewer';
+  const canCreateTask = currentCollabMember?.role === 'lead';
+  const canToggleTask = currentCollabMember?.role === 'lead' || currentCollabMember?.role === 'reviewer';
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#1A1A1A] font-sans">
@@ -1218,6 +1239,20 @@ export default function App() {
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 mt-3 leading-relaxed">{collabRoom.strategy}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={copyCollaborationLink}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-200 text-xs font-bold text-gray-600 hover:border-emerald-200 hover:text-emerald-700"
+                        >
+                          <Copy size={14} />
+                          复制邀请链接
+                        </button>
+                        {currentCollabMember && (
+                          <span className="px-3 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                            你当前是 {currentCollabMember.role}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1238,13 +1273,17 @@ export default function App() {
 
                       <div className="rounded-2xl border border-gray-200 p-4">
                         <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">共享任务板</p>
+                        <p className="text-[11px] text-gray-500 mb-3">
+                          角色权限：`lead` 可创建任务，`lead/reviewer` 可切换状态，`analyst` 主要负责补充备注。
+                        </p>
                         <div className="space-y-2">
                           {collabRoom.tasks.map((task) => (
                             <button
                               key={task.id}
                               onClick={() => handleToggleCollaborationTask(task.id)}
+                              disabled={!canToggleTask}
                               className={cn(
-                                "w-full text-left rounded-xl px-3 py-2 border transition-all",
+                                "w-full text-left rounded-xl px-3 py-2 border transition-all disabled:opacity-60 disabled:cursor-not-allowed",
                                 task.status === 'done'
                                   ? "bg-emerald-50 border-emerald-200"
                                   : "bg-gray-50 border-gray-200 hover:border-emerald-200"
@@ -1252,7 +1291,7 @@ export default function App() {
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <p className="text-sm font-medium text-gray-900">{task.title}</p>
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">{task.status}</span>
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">{task.statusLabel || task.status}</span>
                               </div>
                               <p className="text-[10px] text-gray-400 mt-1">{task.ownerName || '未指派'}</p>
                             </button>
@@ -1267,7 +1306,8 @@ export default function App() {
                           />
                           <button
                             onClick={handleAddCollaborationTask}
-                            className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700"
+                            disabled={!canCreateTask}
+                            className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:bg-gray-300"
                           >
                             添加
                           </button>
@@ -1298,16 +1338,37 @@ export default function App() {
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           onClick={() => handleAddCollaborationNote('note')}
-                          className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-black"
+                          disabled={!collabMemberId}
+                          className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-black disabled:bg-gray-300"
                         >
                           发送备注
                         </button>
                         <button
                           onClick={() => handleAddCollaborationNote('decision')}
-                          className="px-4 py-2 rounded-xl border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+                          disabled={!canCreateDecision}
+                          className="px-4 py-2 rounded-xl border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:border-gray-200 disabled:text-gray-400 disabled:bg-gray-100"
                         >
                           标记为决策
                         </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-200 p-4">
+                      <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">协作历史</p>
+                      <div className="space-y-2 max-h-56 overflow-y-auto">
+                        {collabRoom.activities.map((activity) => (
+                          <div key={activity.id} className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-sm font-medium text-gray-900">
+                                {activity.actorName}
+                                {activity.actorRole ? <span className="text-[10px] text-gray-400 ml-2 uppercase">{activity.actorRole}</span> : null}
+                              </p>
+                              <span className="text-[10px] uppercase tracking-widest text-gray-400">{activity.action}</span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1">{activity.detail}</p>
+                            <p className="text-[10px] text-gray-400 mt-2">{new Date(activity.createdAt).toLocaleString()}</p>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>

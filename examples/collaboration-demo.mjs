@@ -43,7 +43,7 @@ async function main() {
     method: "POST",
     body: JSON.stringify({
       roomId,
-      authorId: alice.member.id,
+      memberId: alice.member.id,
       authorName: "Alice",
       kind: "decision",
       content: "先完成合规复核，再把最优模型写进论文结果段。",
@@ -54,6 +54,7 @@ async function main() {
     method: "POST",
     body: JSON.stringify({
       roomId,
+      memberId: alice.member.id,
       title: "补充局限性说明与免责声明",
       ownerName: "Bob",
     }),
@@ -62,6 +63,9 @@ async function main() {
   const newTask = withTask.room.tasks[0];
   await request(`/api/collaboration/${roomId}/tasks/${newTask.id}/toggle`, {
     method: "POST",
+    body: JSON.stringify({
+      memberId: alice.member.id,
+    }),
   });
 
   const snapshot = await request(`/api/collaboration/${roomId}`);
@@ -73,6 +77,9 @@ async function main() {
   console.log(`Top note: ${snapshot.room.notes[0]?.content || "N/A"}`);
   console.log(
     `Tasks: ${snapshot.room.tasks.map((task) => `${task.title} [${task.status}]`).join(" | ")}`,
+  );
+  console.log(
+    `Recent activity: ${snapshot.room.activities.slice(0, 2).map((item) => `${item.actorName}:${item.action}`).join(" | ")}`,
   );
   console.log("\nDemo finished successfully.");
   console.log(`Alice joined as ${alice.member.role}; Bob joined as ${bob.member.role}.`);

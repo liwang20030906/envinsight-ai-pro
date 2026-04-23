@@ -156,9 +156,19 @@ export interface CollaborationTask {
   id: string;
   title: string;
   status: "todo" | "done";
+  statusLabel?: string;
   ownerName?: string;
   createdAt: string;
   completedAt?: string;
+}
+
+export interface CollaborationActivity {
+  id: string;
+  actorName: string;
+  actorRole?: CollaborationRole;
+  action: string;
+  detail: string;
+  createdAt: string;
 }
 
 export interface CollaborationRoom {
@@ -170,6 +180,7 @@ export interface CollaborationRoom {
   members: CollaborationMember[];
   notes: CollaborationNote[];
   tasks: CollaborationTask[];
+  activities: CollaborationActivity[];
   updatedAt: string;
 }
 

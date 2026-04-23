@@ -12,6 +12,7 @@ import {
   generateTranslatedPaper,
   generateWhatIfText,
 } from "./src/shared/ai";
+import { createCollaborationStore } from "./src/shared/collaboration";
 import { reviewCompliance } from "./src/shared/compliance";
 import { buildModelComparison, pickRegressionViewData } from "./src/shared/modeling";
 import { buildDataProfile } from "./src/shared/profiling";
@@ -107,6 +108,7 @@ async function startServer() {
   const upload = multer({ storage: multer.memoryStorage() });
   const datasets = new Map<string, ParsedDataset>();
   const auditLogs: AuditLogEntry[] = [];
+  const collaborationStore = createCollaborationStore();
 
   function appendAudit(action: string, status: AuditLogEntry["status"], summary: string, datasetId?: string) {
     const entry: AuditLogEntry = {
@@ -371,6 +373,92 @@ async function startServer() {
     const datasetId = typeof req.query.datasetId === "string" ? req.query.datasetId : undefined;
     const logs = datasetId ? auditLogs.filter((log) => log.datasetId === datasetId) : auditLogs.slice(0, 100);
     res.json({ logs });
+  });
+
+  app.get("/api/collaboration/:roomId", (req, res) => {
+    try {
+      const room = collaborationStore.getRoom(req.params.roomId);
+      res.json({ room });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch collaboration room." });
+    }
+  });
+
+  app.post("/api/collaboration/:roomId/join", (req, res) => {
+    try {
+      const roomId = req.params.roomId;
+      const { name, role, datasetId, roomName } = req.body || {};
+      if (typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "Name is required." });
+      }
+      if (role !== "lead" && role !== "analyst" && role !== "reviewer") {
+        return res.status(400).json({ error: "Invalid role." });
+      }
+
+      const payload = collaborationStore.joinRoom({
+        roomId,
+        name: name.trim(),
+        role,
+        datasetId: typeof datasetId === "string" ? datasetId : undefined,
+        roomName: typeof roomName === "string" ? roomName : undefined,
+      });
+      appendAudit("collaboration_join", "success", `${name.trim()} 加入协作房间 ${roomId}。`, datasetId);
+      res.json(payload);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to join collaboration room." });
+    }
+  });
+
+  app.post("/api/collaboration/:roomId/notes", (req, res) => {
+    try {
+      const roomId = req.params.roomId;
+      const { authorId, authorName, content, kind } = req.body || {};
+      if (typeof authorId !== "string" || typeof authorName !== "string" || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ error: "Author and content are required." });
+      }
+
+      const room = collaborationStore.addNote({
+        roomId,
+        authorId,
+        authorName,
+        content: content.trim(),
+        kind: kind === "decision" || kind === "update" ? kind : "note",
+      });
+      appendAudit("collaboration_note", "success", `${authorName} 添加了协作备注。`, room.datasetId);
+      res.json({ room });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to add collaboration note." });
+    }
+  });
+
+  app.post("/api/collaboration/:roomId/tasks", (req, res) => {
+    try {
+      const roomId = req.params.roomId;
+      const { title, ownerName } = req.body || {};
+      if (typeof title !== "string" || !title.trim()) {
+        return res.status(400).json({ error: "Task title is required." });
+      }
+
+      const room = collaborationStore.addTask({
+        roomId,
+        title: title.trim(),
+        ownerName: typeof ownerName === "string" ? ownerName : undefined,
+      });
+      appendAudit("collaboration_task", "success", `协作任务已创建：${title.trim()}`, room.datasetId);
+      res.json({ room });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to add collaboration task." });
+    }
+  });
+
+  app.post("/api/collaboration/:roomId/tasks/:taskId/toggle", (req, res) => {
+    try {
+      const room = collaborationStore.toggleTask(req.params.roomId, req.params.taskId);
+      appendAudit("collaboration_task_toggle", "success", `协作任务状态已切换：${req.params.taskId}`, room.datasetId);
+      res.json({ room });
+    } catch (error: any) {
+      res.status(404).json({ error: error.message || "Failed to toggle collaboration task." });
+    }
   });
 
   // API Routes

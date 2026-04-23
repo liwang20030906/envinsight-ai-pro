@@ -51,6 +51,8 @@ import { twMerge } from 'tailwind-merge';
 import {
   AnalysisResult,
   AnalysisMode,
+  CollaborationRole,
+  CollaborationRoom,
   NewsItem,
   Comment,
   AnalyticsEvent,
@@ -62,6 +64,13 @@ import {
   AuditLogEntry,
 } from './types';
 import { discussWithAI, getAIAnalysisStream, getWhatIfAnalysis } from './services/aiService';
+import {
+  addCollaborationNote,
+  addCollaborationTask,
+  fetchCollaborationRoom,
+  joinCollaborationRoom,
+  toggleCollaborationTask,
+} from './services/collaborationService';
 import {
   getStoredUser,
   setStoredUser,
@@ -139,12 +148,21 @@ export default function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginName, setLoginName] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
+  const [collabRoomId, setCollabRoomId] = useState('envinsight-demo-room');
+  const [collabName, setCollabName] = useState('');
+  const [collabRole, setCollabRole] = useState<CollaborationRole>('analyst');
+  const [collabMemberId, setCollabMemberId] = useState<string | null>(null);
+  const [collabRoom, setCollabRoom] = useState<CollaborationRoom | null>(null);
+  const [collabLoading, setCollabLoading] = useState(false);
+  const [collabNoteInput, setCollabNoteInput] = useState('');
+  const [collabTaskInput, setCollabTaskInput] = useState('');
 
   useEffect(() => {
     const stored = getStoredUser();
     if (stored) {
       setUser(stored);
       setUserInterests(getUserInterests());
+      setCollabName((prev) => prev || stored.displayName);
     }
   }, []);
 
@@ -183,6 +201,37 @@ export default function App() {
       },
     ]);
   }, [view]);
+
+  useEffect(() => {
+    if (user?.displayName) {
+      setCollabName((prev) => prev || user.displayName);
+    }
+  }, [user?.displayName]);
+
+  useEffect(() => {
+    if (!collabMemberId || !collabRoomId) {
+      return;
+    }
+
+    let cancelled = false;
+    const sync = async () => {
+      try {
+        const { room } = await fetchCollaborationRoom(collabRoomId);
+        if (!cancelled) {
+          setCollabRoom(room);
+        }
+      } catch {
+        // Ignore polling failures and keep current snapshot.
+      }
+    };
+
+    sync();
+    const timer = window.setInterval(sync, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [collabMemberId, collabRoomId]);
 
   useEffect(() => {
     if (!result?.trace?.datasetId) {
@@ -319,6 +368,80 @@ export default function App() {
       await runWorkbenchAnalysis(csvFile);
     } catch (err: any) {
       setError(err.message || '示例数据加载失败');
+    }
+  };
+
+  const handleJoinCollaboration = async () => {
+    const nextName = (collabName || user?.displayName || 'Research Guest').trim();
+    if (!collabRoomId.trim()) {
+      setError('请输入协作房间号。');
+      return;
+    }
+
+    setCollabLoading(true);
+    try {
+      const payload = await joinCollaborationRoom({
+        roomId: collabRoomId.trim(),
+        name: nextName,
+        role: collabRole,
+        datasetId: result?.trace?.datasetId,
+        roomName: result ? `${result.columns.x} x ${result.columns.y} Research Room` : undefined,
+      });
+      setCollabRoom(payload.room);
+      setCollabMemberId(payload.member.id);
+      setCollabName(nextName);
+    } catch (err: any) {
+      setError(err.message || '加入协作房间失败');
+    } finally {
+      setCollabLoading(false);
+    }
+  };
+
+  const handleAddCollaborationNote = async (kind: 'note' | 'decision' = 'note') => {
+    if (!collabMemberId || !collabRoomId || !collabNoteInput.trim()) return;
+    setCollabLoading(true);
+    try {
+      const payload = await addCollaborationNote({
+        roomId: collabRoomId,
+        authorId: collabMemberId,
+        authorName: collabName || user?.displayName || 'Research Guest',
+        content: collabNoteInput.trim(),
+        kind,
+      });
+      setCollabRoom(payload.room);
+      setCollabNoteInput('');
+    } catch (err: any) {
+      setError(err.message || '协作备注提交失败');
+    } finally {
+      setCollabLoading(false);
+    }
+  };
+
+  const handleAddCollaborationTask = async () => {
+    if (!collabRoomId || !collabTaskInput.trim()) return;
+    setCollabLoading(true);
+    try {
+      const payload = await addCollaborationTask({
+        roomId: collabRoomId,
+        title: collabTaskInput.trim(),
+        ownerName: collabName || user?.displayName || 'Research Guest',
+      });
+      setCollabRoom(payload.room);
+      setCollabTaskInput('');
+    } catch (err: any) {
+      setError(err.message || '协作任务创建失败');
+    } finally {
+      setCollabLoading(false);
+    }
+  };
+
+  const handleToggleCollaborationTask = async (taskId: string) => {
+    if (!collabRoomId) return;
+    try {
+      const payload = await toggleCollaborationTask(collabRoomId, taskId);
+      setCollabRoom(payload.room);
+    } catch (err: any) {
+      setError(err.message || '协作任务更新失败');
     }
   };
 
@@ -1004,6 +1127,195 @@ export default function App() {
                 <p className="text-xs text-gray-500 leading-relaxed">
                   输出将附带证据链、局限说明与免责声明，适合用于科研讨论和初稿整理。
                 </p>
+              </div>
+            </section>
+
+            <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <MessageSquare size={20} className="text-emerald-600" />
+                多人协作研究室
+              </h2>
+              <div className="space-y-4">
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-1">协作策略</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">
+                    采用“房间码 + 共享任务板 + 决策备注流 + 轮询同步”的轻协作策略，适合研究小组多人并行推进建模、审查和论文整理。
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 block">房间号</label>
+                    <input
+                      value={collabRoomId}
+                      onChange={(e) => setCollabRoomId(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
+                      placeholder="例如 envinsight-demo-room"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 block">你的名字</label>
+                    <input
+                      value={collabName}
+                      onChange={(e) => setCollabName(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
+                      placeholder="例如 Analyst Wang"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {(['lead', 'analyst', 'reviewer'] as CollaborationRole[]).map((role) => (
+                    <button
+                      key={role}
+                      onClick={() => setCollabRole(role)}
+                      className={cn(
+                        "px-3 py-2 rounded-full text-xs font-bold uppercase tracking-widest border transition-all",
+                        collabRole === role
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-gray-200 text-gray-500 hover:border-gray-300"
+                      )}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleJoinCollaboration}
+                    disabled={collabLoading}
+                    className="flex-1 bg-gray-900 hover:bg-black text-white py-2.5 rounded-xl text-sm font-medium transition-all"
+                  >
+                    {collabLoading ? '正在加入...' : '加入 / 创建协作房间'}
+                  </button>
+                  <button
+                    onClick={() => setCollabRoomId('envinsight-demo-room')}
+                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:border-emerald-200"
+                  >
+                    使用示例房间
+                  </button>
+                  {result?.trace?.datasetId && (
+                    <button
+                      onClick={() => setCollabRoomId(result.trace!.datasetId)}
+                      className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:border-emerald-200"
+                    >
+                      使用当前数据集房间
+                    </button>
+                  )}
+                </div>
+
+                {collabRoom ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{collabRoom.name}</p>
+                          <p className="text-xs text-gray-500 mt-1">{collabRoom.objective}</p>
+                        </div>
+                        <span className="px-3 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold uppercase tracking-widest text-emerald-600">
+                          {collabRoom.id}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-3 leading-relaxed">{collabRoom.strategy}</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="rounded-2xl border border-gray-200 p-4">
+                        <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">成员在线</p>
+                        <div className="space-y-2">
+                          {collabRoom.members.map((member) => (
+                            <div key={member.id} className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{member.name}</p>
+                                <p className="text-[10px] uppercase tracking-widest text-gray-400">{member.role}</p>
+                              </div>
+                              <p className="text-[10px] text-gray-400">{new Date(member.lastSeen).toLocaleTimeString()}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-gray-200 p-4">
+                        <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">共享任务板</p>
+                        <div className="space-y-2">
+                          {collabRoom.tasks.map((task) => (
+                            <button
+                              key={task.id}
+                              onClick={() => handleToggleCollaborationTask(task.id)}
+                              className={cn(
+                                "w-full text-left rounded-xl px-3 py-2 border transition-all",
+                                task.status === 'done'
+                                  ? "bg-emerald-50 border-emerald-200"
+                                  : "bg-gray-50 border-gray-200 hover:border-emerald-200"
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-medium text-gray-900">{task.title}</p>
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">{task.status}</span>
+                              </div>
+                              <p className="text-[10px] text-gray-400 mt-1">{task.ownerName || '未指派'}</p>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <input
+                            value={collabTaskInput}
+                            onChange={(e) => setCollabTaskInput(e.target.value)}
+                            className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
+                            placeholder="添加新的协作任务"
+                          />
+                          <button
+                            onClick={handleAddCollaborationTask}
+                            className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700"
+                          >
+                            添加
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-200 p-4">
+                      <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">研究备注流</p>
+                      <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {collabRoom.notes.map((note) => (
+                          <div key={note.id} className="rounded-xl bg-gray-50 px-3 py-3 border border-gray-200">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-sm font-medium text-gray-900">{note.authorName}</p>
+                              <span className="text-[10px] uppercase tracking-widest text-gray-400">{note.kind}</span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-2 leading-relaxed">{note.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <textarea
+                        value={collabNoteInput}
+                        onChange={(e) => setCollabNoteInput(e.target.value)}
+                        rows={3}
+                        className="w-full mt-3 px-3 py-3 rounded-xl border border-gray-200 text-sm focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
+                        placeholder="记录结论、需要复核的问题或下一步安排"
+                      />
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => handleAddCollaborationNote('note')}
+                          className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-black"
+                        >
+                          发送备注
+                        </button>
+                        <button
+                          onClick={() => handleAddCollaborationNote('decision')}
+                          className="px-4 py-2 rounded-xl border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+                        >
+                          标记为决策
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    先加入示例房间或基于当前数据集创建房间，即可让多位研究成员共享任务、同步结论和协同推进论文整理。
+                  </p>
+                )}
               </div>
             </section>
           </div>

@@ -134,6 +134,45 @@ export interface AnalysisTrace {
   auditTrail: AuditLogEntry[];
 }
 
+export type CollaborationRole = "lead" | "analyst" | "reviewer";
+
+export interface CollaborationMember {
+  id: string;
+  name: string;
+  role: CollaborationRole;
+  lastSeen: string;
+}
+
+export interface CollaborationNote {
+  id: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+  kind: "note" | "decision" | "update";
+}
+
+export interface CollaborationTask {
+  id: string;
+  title: string;
+  status: "todo" | "done";
+  ownerName?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface CollaborationRoom {
+  id: string;
+  name: string;
+  strategy: string;
+  objective: string;
+  datasetId?: string;
+  members: CollaborationMember[];
+  notes: CollaborationNote[];
+  tasks: CollaborationTask[];
+  updatedAt: string;
+}
+
 export interface DiscussionMessage {
   id: string;
   role: "user" | "assistant";

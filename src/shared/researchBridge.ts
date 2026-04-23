@@ -201,6 +201,9 @@ export function buildWorkbenchNewsPublishReview(
   const verdict: WorkbenchNewsPublishReview["verdict"] =
     highRiskCount > 0 ? "blocked" : riskItems.length > 2 ? "review_required" : "ready_with_review";
   const directPublishAllowed = verdict === "ready_with_review";
+  const conclusionTitle = lead
+    ? `${lead.category}后续分析提示：${result.columns.x} 与 ${result.columns.y} 存在值得关注的变化关系`
+    : `最新分析提示：${result.columns.x} 与 ${result.columns.y} 存在值得关注的变化关系`;
   const summary =
     verdict === "blocked"
       ? "当前不建议把科研工作台结果直接上传到资讯侧，至少需要先完成脱敏、来源补充和结论降级表述。"
@@ -213,6 +216,7 @@ export function buildWorkbenchNewsPublishReview(
     directPublishAllowed,
     headline: directPublishAllowed ? "可进入资讯编辑流程" : "不建议直接上传到资讯流",
     summary,
+    conclusionTitle,
     publicDraftTitle: buildPublicDraftTitle(result, lead),
     publicDraftSummary:
       lead

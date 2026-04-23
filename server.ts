@@ -17,6 +17,7 @@ import { reviewCompliance } from "./src/shared/compliance";
 import { buildModelComparison, pickRegressionViewData } from "./src/shared/modeling";
 import { fetchRealNews, matchesNewsFilters, type RealNewsFetchOptions } from "./src/shared/news";
 import { buildDataProfile } from "./src/shared/profiling";
+import { buildWorkbenchNewsPublishReview } from "./src/shared/researchBridge";
 import { buildPaperDraft, buildReport } from "./src/shared/reporting";
 import { calculateRegressionSummary } from "./src/shared/statistics";
 import type { AnalysisResult, AuditLogEntry } from "./src/types";
@@ -376,6 +377,60 @@ async function startServer() {
       res.json(newItems);
     } catch (error: any) {
       res.status(502).json({ error: error.message || "Real paper crawl failed." });
+    }
+  });
+
+  app.post("/api/news/publish-workbench", (req, res) => {
+    try {
+      const { result, importedLead, publishReview, workbenchFeedback } = req.body || {};
+      if (!result || !publishReview || !workbenchFeedback) {
+        return res.status(400).json({ error: "缺少发布所需的分析结果或发布草稿。" });
+      }
+
+      const review = publishReview || buildWorkbenchNewsPublishReview(result as AnalysisResult, importedLead);
+      if (review.verdict === "blocked") {
+        return res.status(400).json({ error: "当前结果尚不能直接发布到大众资讯流，请先完成复核。" });
+      }
+
+      const publishedItem = {
+        id: createId("workbench_news"),
+        title: review.conclusionTitle,
+        oneSentenceSummary: review.publicDraftSummary,
+        conceptImageUrl: `https://picsum.photos/seed/${encodeURIComponent(review.conclusionTitle.slice(0, 32))}/1200/675`,
+        plainTextContent: review.publicDraftBody,
+        translatedAbstract: review.publicDraftSummary,
+        sourceLink: importedLead?.sourceLink || "",
+        sourceJournal: importedLead?.sourceJournal || "EnvInsight 科研工作台",
+        paperTitle: importedLead?.title || "工作台研究结论",
+        publishDate: new Date().toISOString().slice(0, 10),
+        category: importedLead?.category || "流行病学",
+        likes: 0,
+        comments: [],
+        authors: importedLead?.authors || ["EnvInsight 研究团队"],
+        citedByCount: importedLead?.citedByCount,
+        doi: undefined,
+        isOpenAccess: importedLead?.isOpenAccess,
+        publicationYear: new Date().getUTCFullYear(),
+        explainers: {
+          translatedTitle: importedLead?.title || "工作台研究结论",
+          plainLanguageSummary: review.publicDraftSummary,
+          whyItMatters: workbenchFeedback.summary,
+          howStudyWorked: "这条资讯来自科研工作台对数据的进一步分析，不是直接搬运单篇论文原文，而是基于研究线索做的本地验证和公众化改写。",
+          keyFindings: workbenchFeedback.highlights || [],
+          limitations: review.riskItems.map((item: any) => item.issue).slice(0, 3),
+          everydayMeaning: workbenchFeedback.caution,
+          readerActions: review.requiredActions || [],
+          publicCautions: [
+            "这是一条基于科研工作台分析整理的公众资讯，不应替代医生诊断或正式指南。",
+            "阅读时请优先关注样本范围、局限性和适用边界。",
+          ],
+        },
+      };
+
+      newsItems = mergeNewsItems(newsItems, [publishedItem]);
+      res.json(publishedItem);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "发布到大众资讯流失败。" });
     }
   });
 

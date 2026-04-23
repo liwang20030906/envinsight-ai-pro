@@ -62,6 +62,7 @@ export async function fetchNews(params?: { q?: string; category?: string; filter
     explainers: item.explainers,
     sourceJournal: item.sourceJournal,
     sourceLink: item.sourceLink,
+    paperTitle: item.paperTitle,
     isOpenAccess: item.isOpenAccess,
     publicationYear: item.publicationYear,
     comments: (item.comments || []).map((c: any) => ({
@@ -86,6 +87,42 @@ export async function crawlNews(category?: string, filters?: NewsFilters): Promi
   });
   if (!res.ok) throw new Error("Crawl failed");
   return res.json();
+}
+
+export async function publishWorkbenchNews(payload: {
+  result: unknown;
+  importedLead?: unknown;
+  publishReview: unknown;
+  workbenchFeedback: unknown;
+}): Promise<NewsItem> {
+  const res = await fetch("/api/news/publish-workbench", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("发布到大众资讯流失败");
+  const item = await res.json();
+  return {
+    id: item.id,
+    title: item.title,
+    summary: item.oneSentenceSummary || item.summary || "",
+    content: item.plainTextContent || item.content || "",
+    category: item.category || "未分类",
+    date: item.publishDate || item.date || "",
+    imageUrl: item.conceptImageUrl || item.imageUrl || "",
+    likesCount: item.likes || 0,
+    translatedAbstract: item.translatedAbstract,
+    authors: item.authors || [],
+    citedByCount: item.citedByCount,
+    doi: item.doi,
+    explainers: item.explainers,
+    sourceJournal: item.sourceJournal,
+    sourceLink: item.sourceLink,
+    paperTitle: item.paperTitle,
+    isOpenAccess: item.isOpenAccess,
+    publicationYear: item.publicationYear,
+    comments: [],
+  };
 }
 
 // ── Likes (via REST API) ──

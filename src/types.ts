@@ -231,6 +231,7 @@ export interface NewsItem {
   explainers?: NewsExplainers;
   sourceLink?: string;
   sourceJournal?: string;
+  paperTitle?: string;
   comments?: Comment[];
   isOpenAccess?: boolean;
   publicationYear?: number;
@@ -283,6 +284,7 @@ export interface WorkbenchNewsPublishReview {
   directPublishAllowed: boolean;
   headline: string;
   summary: string;
+  conclusionTitle: string;
   publicDraftTitle: string;
   publicDraftSummary: string;
   publicDraftBody: string;

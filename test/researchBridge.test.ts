@@ -106,6 +106,7 @@ test("buildWorkbenchNewsPublishReview blocks direct publishing for exploratory r
 
   assert.equal(review.directPublishAllowed, false);
   assert.match(review.summary, /不建议|不能直接|必须/);
+  assert.match(review.conclusionTitle, /值得关注的变化关系/);
   assert.ok(review.riskItems.some((item) => item.title.includes("样本量")));
   assert.ok(review.requiredActions.length >= 3);
 });

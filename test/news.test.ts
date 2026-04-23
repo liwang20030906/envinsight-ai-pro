@@ -63,6 +63,9 @@ test("buildNewsItemFromOpenAlexWork transforms a real work shape into a news ite
   assert.equal(item?.authors?.[0], "Alice");
   assert.equal(item?.isOpenAccess, true);
   assert.equal(item?.publicationYear, 2026);
+  assert.match(item?.title || "", /空气质量|健康|影响|风险|研究/);
+  assert.notEqual(item?.title, item?.oneSentenceSummary);
+  assert.ok(item?.paperTitle);
   assert.ok(item?.explainers?.plainLanguageSummary);
   assert.ok(item?.explainers?.publicCautions?.length);
   assert.ok(item?.explainers?.keyFindings.length);

@@ -85,6 +85,7 @@ import {
   likeNews,
   addComment,
   getStoredImportedLead,
+  publishWorkbenchNews,
   getUserInterests,
   setStoredImportedLead,
   updateUserInterest,
@@ -176,6 +177,7 @@ export default function App() {
   const [auditTrail, setAuditTrail] = useState<AuditLogEntry[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [paperLoading, setPaperLoading] = useState(false);
+  const [publishLoading, setPublishLoading] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [discussionOpen, setDiscussionOpen] = useState(false);
@@ -730,6 +732,33 @@ export default function App() {
       setError(err.message || '论文初稿生成失败');
     } finally {
       setPaperLoading(false);
+    }
+  };
+
+  const handlePublishToNewsFeed = async () => {
+    if (!result || !publishReview || !workbenchFeedback) return;
+    if (publishReview.verdict === 'blocked') {
+      setError('当前结果还不能直接推送到大众资讯流，请先完成复核。');
+      return;
+    }
+
+    setPublishLoading(true);
+    try {
+      const published = await publishWorkbenchNews({
+        result,
+        importedLead,
+        publishReview,
+        workbenchFeedback,
+      });
+      await loadNews(searchQuery);
+      setSelectedNews(published);
+      setView('news');
+      setMode('public');
+      trackEvent('click', 'publish_workbench_to_news', { category: published.category, newsId: published.id });
+    } catch (err: any) {
+      setError(err.message || '推送到大众资讯流失败');
+    } finally {
+      setPublishLoading(false);
     }
   };
 
@@ -1947,7 +1976,7 @@ export default function App() {
 
                         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
                           <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">建议的大众资讯草稿</p>
-                          <h5 className="text-base font-bold text-gray-900">{publishReview.publicDraftTitle}</h5>
+                          <h5 className="text-base font-bold text-gray-900">{publishReview.conclusionTitle}</h5>
                           <p className="text-sm text-gray-600 mt-2">{publishReview.publicDraftSummary}</p>
                           <div className="mt-3 text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
                             {publishReview.publicDraftBody}
@@ -1982,6 +2011,23 @@ export default function App() {
                         </div>
 
                         <KeyValueList title="推荐发布流程" items={publishReview.requiredActions} />
+                        <div className="flex flex-wrap gap-3">
+                          <button
+                            onClick={handlePublishToNewsFeed}
+                            disabled={publishLoading || publishReview.verdict === 'blocked'}
+                            className={cn(
+                              "px-4 py-2.5 rounded-xl text-sm font-medium transition-all",
+                              publishReview.verdict === 'blocked'
+                                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                                : "bg-emerald-600 text-white hover:bg-emerald-700"
+                            )}
+                          >
+                            {publishLoading ? '正在推送到资讯流...' : '直接推送到大众资讯流'}
+                          </button>
+                          <p className="text-xs text-gray-500 self-center">
+                            推送后会直接出现在大众资讯页，并自动使用“核心结论”作为标题。
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2675,8 +2721,15 @@ function NewsDetail({
 
         <h1 className="text-4xl md:text-5xl font-bold text-gray-900 leading-tight mb-6">{item.title}</h1>
 
+        {item.paperTitle && (
+          <div className="mb-6 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">论文题目</p>
+            <p className="text-sm text-gray-700 leading-relaxed">{item.paperTitle}</p>
+          </div>
+        )}
+
         <div className="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl mb-10">
-          <h4 className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-2">核心结论</h4>
+          <h4 className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-2">这篇论文的核心结论</h4>
           <p className="text-xl font-medium text-emerald-900 italic">&ldquo;{item.summary}&rdquo;</p>
         </div>
 

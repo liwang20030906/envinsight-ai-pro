@@ -25,12 +25,12 @@ function pickDatasetShape(item: NewsItem): ImportedResearchLead["suggestedDatase
 
 function buildSuggestedModels(dataset: ImportedResearchLead["suggestedDataset"]): string[] {
   if (dataset === "classification") {
-    return ["Logistic Regression", "Gradient Boosting", "Calibration Curve Review"];
+    return ["逻辑回归", "梯度提升模型", "校准曲线复核"];
   }
   if (dataset === "time-series") {
-    return ["Seasonal Trend Model", "Interrupted Time Series", "Rolling Window Regression"];
+    return ["季节趋势模型", "中断时间序列", "滚动窗口回归"];
   }
-  return ["OLS Regression", "Robust Regression", "Sensitivity Analysis"];
+  return ["OLS 线性回归", "稳健回归", "敏感性分析"];
 }
 
 function buildDataNeeds(item: NewsItem, dataset: ImportedResearchLead["suggestedDataset"]): string[] {

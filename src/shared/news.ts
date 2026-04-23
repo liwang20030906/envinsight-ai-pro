@@ -244,7 +244,7 @@ export async function buildNewsItemFromOpenAlexWork(work: OpenAlexWork): Promise
 
   return {
     id: work.id || createId("paper"),
-    title: digest.result.title || title,
+    title: digest.result.translatedTitle || digest.result.title || title,
     oneSentenceSummary: digest.result.oneSentenceSummary,
     conceptImageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.slice(0, 32))}/1200/675`,
     plainTextContent: digest.result.plainTextContent,

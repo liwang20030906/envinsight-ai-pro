@@ -116,11 +116,45 @@ const DEFAULT_NEWS_FILTERS: NewsFilters = {
   recentOnly: false,
 };
 const SAMPLE_DATASETS = [
-  { id: 'regression', title: '连续型回归', description: 'PM2.5 与疾病率的线性关系，适合看回归、What-If 和论文初稿。' },
+  { id: 'regression', title: '连续型回归', description: 'PM2.5 与疾病率的线性关系，适合看回归、情景模拟和论文初稿。' },
   { id: 'classification', title: '二分类风险', description: '生物标志物 + 风险标签，适合预览分类模型对比与推荐。' },
   { id: 'time-series', title: '时间序列趋势', description: '按日期追踪污染与门诊量，适合预览趋势建模与时序对比。' },
   { id: 'privacy-risk', title: '高风险样本', description: '包含姓名、邮箱和摘要列，可直接预览合规拦截与 AI 脱敏方案。' },
 ] as const;
+
+function formatRoleLabel(role: CollaborationRole): string {
+  if (role === 'lead') return '负责人';
+  if (role === 'reviewer') return '复核人';
+  return '分析师';
+}
+
+function formatModelFamilyLabel(family: string): string {
+  if (family === 'regression') return '回归';
+  if (family === 'classification') return '分类';
+  if (family === 'time-series') return '时间序列';
+  if (family === 'eda') return '探索分析';
+  return family;
+}
+
+function formatNoteKind(kind: 'note' | 'decision' | 'update'): string {
+  if (kind === 'decision') return '决策';
+  if (kind === 'update') return '更新';
+  return '备注';
+}
+
+function formatMetricLabel(label: string): string {
+  const normalized = label.toLowerCase();
+  if (normalized === 'r2' || normalized === 'r_squared') return '拟合度';
+  if (normalized === 'mae') return '平均误差';
+  if (normalized === 'rmse') return '均方根误差';
+  if (normalized === 'accuracy') return '准确率';
+  if (normalized === 'precision') return '精确率';
+  if (normalized === 'recall') return '召回率';
+  if (normalized === 'auc') return '曲线下面积';
+  if (normalized === 'baseline') return '基线';
+  if (normalized === 'trend') return '趋势强度';
+  return label;
+}
 
 export default function App() {
   const [user, setUser] = useState<UserType | null>(null);
@@ -448,7 +482,7 @@ export default function App() {
             roomId: collabRoomId,
             memberId: collabMemberId,
             title: task,
-            ownerName: collabName || user?.displayName || 'Research Guest',
+            ownerName: collabName || user?.displayName || '访客研究员',
           });
           latestRoom = payload.room;
         }
@@ -464,11 +498,11 @@ export default function App() {
     }
 
     setCollabNoteInput(importedLead.collaborationTasks.map((task, index) => `${index + 1}. ${task}`).join('\n'));
-    setError('当前角色不能直接创建任务，我已把推荐任务放进备注框，方便提交给 lead/reviewer。');
+    setError('当前角色不能直接创建任务，我已把推荐任务放进备注框，方便提交给负责人或复核人。');
   };
 
   const handleJoinCollaboration = async () => {
-    const nextName = (collabName || user?.displayName || 'Research Guest').trim();
+    const nextName = (collabName || user?.displayName || '访客研究员').trim();
     if (!collabRoomId.trim()) {
       setError('请输入协作房间号。');
       return;
@@ -481,7 +515,7 @@ export default function App() {
         name: nextName,
         role: collabRole,
         datasetId: result?.trace?.datasetId,
-        roomName: result ? `${result.columns.x} x ${result.columns.y} Research Room` : undefined,
+        roomName: result ? `${result.columns.x} × ${result.columns.y} 研究协作室` : undefined,
       });
       setCollabRoom(payload.room);
       setCollabMemberId(payload.member.id);
@@ -503,7 +537,7 @@ export default function App() {
       const payload = await addCollaborationNote({
         roomId: collabRoomId,
         memberId: collabMemberId,
-        authorName: collabName || user?.displayName || 'Research Guest',
+        authorName: collabName || user?.displayName || '访客研究员',
         content: collabNoteInput.trim(),
         kind,
       });
@@ -524,7 +558,7 @@ export default function App() {
         roomId: collabRoomId,
         memberId: collabMemberId,
         title: collabTaskInput.trim(),
-        ownerName: collabName || user?.displayName || 'Research Guest',
+        ownerName: collabName || user?.displayName || '访客研究员',
       });
       setCollabRoom(payload.room);
       setCollabTaskInput('');
@@ -617,25 +651,25 @@ export default function App() {
       '',
       `> ${paperDraft.disclaimer}`,
       '',
-      '## Abstract',
+      '## 摘要',
       paperDraft.abstract,
       '',
-      '## Introduction',
+      '## 引言',
       paperDraft.introduction,
       '',
-      '## Methods',
+      '## 方法',
       paperDraft.methods,
       '',
-      '## Results',
+      '## 结果',
       paperDraft.results,
       '',
-      '## Discussion',
+      '## 讨论',
       paperDraft.discussion,
       '',
-      '## Limitations',
+      '## 局限性',
       paperDraft.limitations,
       '',
-      '## Evidence Map',
+      '## 证据映射',
       ...paperDraft.evidenceMap.map((item) => `- ${item.label}: ${item.value} (${item.source})`),
     ].join('\n');
 
@@ -939,7 +973,7 @@ export default function App() {
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {[
-                      { key: 'openAccessOnly', label: '仅开放获取 OA' },
+                      { key: 'openAccessOnly', label: '仅看开放论文' },
                       { key: 'highlyCitedOnly', label: '高被引优先' },
                       { key: 'recentOnly', label: '近一年' },
                     ].map((filter) => (
@@ -1107,7 +1141,7 @@ export default function App() {
                     </span>
                     {importedLead.isOpenAccess && (
                       <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
-                        Open Access
+                        开放获取
                       </span>
                     )}
                     {importedLead.citedByCount != null && (
@@ -1231,7 +1265,7 @@ export default function App() {
             )}>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <RefreshCw size={20} className="text-emerald-600" />
-                What-If 决策模拟
+                情景模拟
               </h2>
               <div className="space-y-6">
                 <div>
@@ -1270,7 +1304,7 @@ export default function App() {
 
                 {result?.modelComparison?.datasetShape !== 'regression' && (
                   <p className="text-xs text-gray-500">
-                    当前数据推荐的默认路线不是回归分析，What-If 预测仅在回归型数据上启用。
+                    当前数据推荐的默认路线不是回归分析，情景模拟仅在回归型数据上启用。
                   </p>
                 )}
 
@@ -1339,7 +1373,7 @@ export default function App() {
                       value={collabRoomId}
                       onChange={(e) => setCollabRoomId(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
-                      placeholder="例如 envinsight-demo-room"
+                      placeholder="例如：envinsight-demo-room"
                     />
                   </div>
                   <div>
@@ -1348,13 +1382,13 @@ export default function App() {
                       value={collabName}
                       onChange={(e) => setCollabName(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
-                      placeholder="例如 Analyst Wang"
+                      placeholder="例如：张同学"
                     />
                   </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {(['lead', 'analyst', 'reviewer'] as CollaborationRole[]).map((role) => (
+                      {(['lead', 'analyst', 'reviewer'] as CollaborationRole[]).map((role) => (
                     <button
                       key={role}
                       onClick={() => setCollabRole(role)}
@@ -1365,7 +1399,7 @@ export default function App() {
                           : "border-gray-200 text-gray-500 hover:border-gray-300"
                       )}
                     >
-                      {role}
+                      {formatRoleLabel(role)}
                     </button>
                   ))}
                 </div>
@@ -1417,7 +1451,7 @@ export default function App() {
                         </button>
                         {currentCollabMember && (
                           <span className="px-3 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold uppercase tracking-widest text-gray-500">
-                            你当前是 {currentCollabMember.role}
+                            你当前身份：{formatRoleLabel(currentCollabMember.role)}
                           </span>
                         )}
                       </div>
@@ -1431,7 +1465,7 @@ export default function App() {
                             <div key={member.id} className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2">
                               <div>
                                 <p className="text-sm font-medium text-gray-900">{member.name}</p>
-                                <p className="text-[10px] uppercase tracking-widest text-gray-400">{member.role}</p>
+                                <p className="text-[10px] uppercase tracking-widest text-gray-400">{formatRoleLabel(member.role)}</p>
                               </div>
                               <p className="text-[10px] text-gray-400">{new Date(member.lastSeen).toLocaleTimeString()}</p>
                             </div>
@@ -1442,7 +1476,7 @@ export default function App() {
                       <div className="rounded-2xl border border-gray-200 p-4">
                         <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">共享任务板</p>
                         <p className="text-[11px] text-gray-500 mb-3">
-                          角色权限：`lead` 可创建任务，`lead/reviewer` 可切换状态，`analyst` 主要负责补充备注。
+                          角色权限：负责人可创建任务，负责人 / 复核人可切换状态，分析师主要负责补充备注。
                         </p>
                         <div className="space-y-2">
                           {collabRoom.tasks.map((task) => (
@@ -1490,7 +1524,7 @@ export default function App() {
                           <div key={note.id} className="rounded-xl bg-gray-50 px-3 py-3 border border-gray-200">
                             <div className="flex items-center justify-between gap-3">
                               <p className="text-sm font-medium text-gray-900">{note.authorName}</p>
-                              <span className="text-[10px] uppercase tracking-widest text-gray-400">{note.kind}</span>
+                              <span className="text-[10px] uppercase tracking-widest text-gray-400">{formatNoteKind(note.kind)}</span>
                             </div>
                             <p className="text-sm text-gray-600 mt-2 leading-relaxed">{note.content}</p>
                           </div>
@@ -1529,7 +1563,7 @@ export default function App() {
                             <div className="flex items-center justify-between gap-3">
                               <p className="text-sm font-medium text-gray-900">
                                 {activity.actorName}
-                                {activity.actorRole ? <span className="text-[10px] text-gray-400 ml-2 uppercase">{activity.actorRole}</span> : null}
+                                {activity.actorRole ? <span className="text-[10px] text-gray-400 ml-2 uppercase">{formatRoleLabel(activity.actorRole)}</span> : null}
                               </p>
                               <span className="text-[10px] uppercase tracking-widest text-gray-400">{activity.action}</span>
                             </div>
@@ -1552,7 +1586,7 @@ export default function App() {
           <div className="lg:col-span-8 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">R-Squared (拟合度)</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">拟合度</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {result ? result.summary.rSquared.toFixed(3) : '--'}
                 </p>
@@ -1562,12 +1596,12 @@ export default function App() {
                 </div>
               </div>
               <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">P-Value (显著性)</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">显著性水平</p>
                 <p className={cn(
                   "text-2xl font-bold",
                   result && result.summary.pValue != null && result.summary.pValue < 0.05 ? "text-emerald-600" : "text-gray-900"
                 )}>
-                  {result ? (result.summary.pValue == null ? 'N/A' : result.summary.pValue.toFixed(3)) : '--'}
+                  {result ? (result.summary.pValue == null ? '暂不可判' : result.summary.pValue.toFixed(3)) : '--'}
                 </p>
                 <div className="mt-2 flex items-center gap-1 text-[10px] font-medium">
                   {result && result.summary.pValue != null ? (
@@ -1582,7 +1616,7 @@ export default function App() {
                 </div>
               </div>
               <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Beta (影响系数)</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">影响系数</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {result ? result.summary.coefficients.pm25.toFixed(4) : '--'}
                 </p>
@@ -1724,7 +1758,7 @@ export default function App() {
                           <div className="flex items-center justify-between gap-3">
                             <p className="text-sm font-semibold text-gray-900">{model.name}</p>
                             <span className="text-xs font-bold text-emerald-600">
-                              {result.modelComparison ? `Score ${model.score}` : `Fit ${model.fitScore}`}
+                              {result.modelComparison ? `评分 ${model.score}` : `适配度 ${model.fitScore}`}
                             </span>
                           </div>
                           <p className="text-sm text-gray-600 mt-2">{result.modelComparison ? model.summary : model.reason}</p>
@@ -1732,7 +1766,7 @@ export default function App() {
                             <div className="mt-3 flex flex-wrap gap-2">
                               {Object.entries(model.metrics).slice(0, 3).map(([key, value]) => (
                                 <span key={key} className="px-2 py-1 rounded-full bg-gray-100 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                                  {key}: {String(value)}
+                                  {formatMetricLabel(key)}：{String(value)}
                                 </span>
                               ))}
                             </div>
@@ -1756,14 +1790,14 @@ export default function App() {
                             <p className="text-lg font-bold text-gray-900 mt-1">{selectedModel.name}</p>
                           </div>
                           <span className="px-3 py-1 rounded-full bg-white border border-gray-200 text-xs font-bold text-emerald-600">
-                            {selectedModel.family}
+                            {formatModelFamilyLabel(selectedModel.family)}
                           </span>
                         </div>
                         <p className="text-sm text-gray-600 mt-3">{selectedModel.summary}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {Object.entries(selectedModel.metrics).map(([key, value]) => (
                             <span key={key} className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                              {key}: {String(value)}
+                              {formatMetricLabel(key)}：{String(value)}
                             </span>
                           ))}
                         </div>
@@ -1789,7 +1823,7 @@ export default function App() {
                   AI 智能解读
                 </h2>
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700">
-                  OpenAI
+                  中文解读
                 </span>
               </div>
 
@@ -1868,7 +1902,7 @@ export default function App() {
                   <Newspaper size={20} className="text-emerald-600" />
                   研究结果回流资讯
                 </h2>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">News Loop</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">回流闭环</span>
               </div>
               <div className="p-6">
                 {workbenchFeedback ? (
@@ -1965,7 +1999,7 @@ export default function App() {
                   <FileText size={20} className="text-emerald-600" />
                   结构化报告
                 </h2>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Traceable</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">可追溯</span>
               </div>
               <div className="p-6">
                 {report ? (
@@ -1992,7 +2026,7 @@ export default function App() {
                   <ChevronRight size={20} className="text-emerald-600" />
                   论文初稿
                 </h2>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">IMRaD</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">论文结构</span>
               </div>
               <div className="p-6">
                 {paperDraft ? (
@@ -2007,19 +2041,19 @@ export default function App() {
                         className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-bold text-gray-600 hover:border-emerald-200 hover:text-emerald-700 transition-all"
                       >
                         <Copy size={14} />
-                        复制 Markdown
+                        复制论文草稿
                       </button>
                     </div>
-                    <DraftSection title="Abstract" content={paperDraft.abstract} />
-                    <DraftSection title="Introduction" content={paperDraft.introduction} />
-                    <DraftSection title="Methods" content={paperDraft.methods} />
-                    <DraftSection title="Results" content={paperDraft.results} />
-                    <DraftSection title="Discussion" content={paperDraft.discussion} />
-                    <DraftSection title="Limitations" content={paperDraft.limitations} />
+                    <DraftSection title="摘要" content={paperDraft.abstract} />
+                    <DraftSection title="引言" content={paperDraft.introduction} />
+                    <DraftSection title="方法" content={paperDraft.methods} />
+                    <DraftSection title="结果" content={paperDraft.results} />
+                    <DraftSection title="讨论" content={paperDraft.discussion} />
+                    <DraftSection title="局限性" content={paperDraft.limitations} />
                     <EvidenceList items={paperDraft.evidenceMap} />
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">点击左侧“生成论文初稿”后，这里会生成结构化的 IMRaD 草稿和证据映射。</p>
+                  <p className="text-sm text-gray-500">点击左侧“生成论文初稿”后，这里会生成结构化论文草稿和证据映射。</p>
                 )}
               </div>
             </section>
@@ -2031,7 +2065,7 @@ export default function App() {
                   审计轨迹
                 </h2>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                  {result?.trace?.datasetId || 'No dataset'}
+                  {result?.trace?.datasetId || '暂无数据集'}
                 </span>
               </div>
               <div className="p-6">
@@ -2382,7 +2416,7 @@ function NewsStrip({ item, onClick }: { item: NewsItem; onClick: () => void }) {
           {item.isOpenAccess ? (
             <>
               <span className="mx-1">&bull;</span>
-              <span className="text-emerald-600">OA</span>
+              <span className="text-emerald-600">开放论文</span>
             </>
           ) : null}
           {item.citedByCount != null ? (
@@ -2440,7 +2474,7 @@ function NewsCard({ item, featured, onClick }: { item: NewsItem; featured?: bool
             <Globe size={10} />
             <Calendar size={10} />
             {item.date}
-            {item.isOpenAccess ? <span className="text-emerald-600">OA</span> : null}
+            {item.isOpenAccess ? <span className="text-emerald-600">开放论文</span> : null}
             {item.citedByCount != null ? <span className="normal-case">被引 {item.citedByCount}</span> : null}
             {item.sourceJournal ? <span className="normal-case truncate max-w-[140px]">{item.sourceJournal}</span> : null}
           </div>
@@ -2734,7 +2768,7 @@ function NewsDetail({
             <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold">AI</div>
             <div>
               <p className="text-sm font-bold text-gray-900">EnvInsight AI 科学记者</p>
-              <p className="text-xs text-gray-500">基于 OpenAI 模型生成</p>
+              <p className="text-xs text-gray-500">由智能引擎生成并做中文科普化整理</p>
             </div>
           </div>
           <div className="flex items-center gap-4 flex-wrap">
@@ -2750,7 +2784,7 @@ function NewsDetail({
             )}
             {item.isOpenAccess && (
               <span className="text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full font-medium">
-                Open Access
+                开放获取
               </span>
             )}
             {item.authors && item.authors.length > 0 && (

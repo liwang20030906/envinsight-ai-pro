@@ -68,7 +68,7 @@ test("collaboration store enforces role permissions", () => {
         memberId: analyst.member.id,
         title: "不应该创建成功",
       }),
-    /Only lead can create collaboration tasks/,
+    /只有负责人可以创建协作任务/,
   );
 
   assert.throws(
@@ -79,6 +79,6 @@ test("collaboration store enforces role permissions", () => {
         content: "直接写成正式决策",
         kind: "decision",
       }),
-    /Only lead or reviewer can record a decision/,
+    /只有负责人或复核人可以记录正式决策/,
   );
 });

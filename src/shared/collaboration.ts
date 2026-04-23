@@ -52,24 +52,30 @@ function canToggleTask(role: CollaborationRole): boolean {
   return role === "lead" || role === "reviewer";
 }
 
+function roleLabel(role: CollaborationRole): string {
+  if (role === "lead") return "负责人";
+  if (role === "reviewer") return "复核人";
+  return "分析师";
+}
+
 function createSeedRoom(roomId: string): CollaborationRoom {
   const createdAt = nowIso();
   const members: CollaborationMember[] = [
     {
       id: "member_seed_lead",
-      name: "PI Chen",
+      name: "项目负责人陈老师",
       role: "lead",
       lastSeen: createdAt,
     },
     {
       id: "member_seed_analyst",
-      name: "Analyst Li",
+      name: "分析师李同学",
       role: "analyst",
       lastSeen: createdAt,
     },
     {
       id: "member_seed_reviewer",
-      name: "Reviewer Sun",
+      name: "审稿人孙老师",
       role: "reviewer",
       lastSeen: createdAt,
     },
@@ -80,7 +86,7 @@ function createSeedRoom(roomId: string): CollaborationRoom {
       title: "复核字段脱敏与来源许可",
       status: "done",
       statusLabel: "已完成",
-      ownerName: "PI Chen",
+      ownerName: "项目负责人陈老师",
       createdAt,
       completedAt: createdAt,
     },
@@ -89,7 +95,7 @@ function createSeedRoom(roomId: string): CollaborationRoom {
       title: "确认最优模型是否适合写入论文结果段",
       status: "todo",
       statusLabel: "待处理",
-      ownerName: "Analyst Li",
+      ownerName: "分析师李同学",
       createdAt,
     },
   ];
@@ -112,13 +118,13 @@ function createSeedRoom(roomId: string): CollaborationRoom {
     },
   ];
   const activities: CollaborationActivity[] = [
-    createActivity("PI Chen", "lead", "join", "创建并初始化了示例协作房间。"),
-    createActivity("Reviewer Sun", "reviewer", "review", "补充了对外发布前的审稿要求。"),
+    createActivity("项目负责人陈老师", "lead", "加入房间", "创建并初始化了示例协作房间。"),
+    createActivity("审稿人孙老师", "reviewer", "审查复核", "补充了对外发布前的审稿要求。"),
   ];
 
   return {
     id: roomId,
-    name: "EnvInsight Demo Room",
+    name: "EnvInsight 示例研究室",
     strategy:
       "轻量协作策略：房间码 + 邀请链接 + 共享任务板 + 决策记录 + 历史轨迹，适合科研小组快速协同。",
     objective: "围绕当前环境健康数据完成合规审查、模型选择、结果复核与论文初稿协同。",
@@ -143,7 +149,7 @@ export function createCollaborationStore() {
 
     const room: CollaborationRoom = {
       id: roomId,
-      name: name || `Research Room ${roomId.slice(0, 8)}`,
+      name: name || `研究协作室 ${roomId.slice(0, 8)}`,
       datasetId,
       strategy:
         "轻量协作策略：邀请链接共享、共享任务板、研究备注流和轮询同步，避免多人直接覆盖分析结论。",
@@ -174,7 +180,7 @@ export function createCollaborationStore() {
   function requireMember(room: CollaborationRoom, actor: ActorRef): CollaborationMember {
     const member = room.members.find((item) => item.id === actor.memberId);
     if (!member) {
-      throw new Error("Collaboration member not found. Please rejoin the room.");
+      throw new Error("未找到协作成员，请重新加入房间。");
     }
     member.lastSeen = nowIso();
     return member;
@@ -211,11 +217,11 @@ export function createCollaborationStore() {
         id: createId("note"),
         authorId: member.id,
         authorName: member.name,
-        content: `${member.name} 已加入协作房间，角色为 ${member.role}。`,
+        content: `${member.name} 已加入协作房间，角色为 ${roleLabel(member.role)}。`,
         createdAt: nowIso(),
         kind: "update",
       });
-      addActivity(room, createActivity(member.name, member.role, "join", `加入房间并选择角色 ${member.role}。`));
+      addActivity(room, createActivity(member.name, member.role, "加入房间", `加入房间并选择角色 ${roleLabel(member.role)}。`));
       touch(room);
       return { room: cloneRoom(room), member: { ...member } };
     },
@@ -232,7 +238,7 @@ export function createCollaborationStore() {
       const kind = input.kind || "note";
 
       if (kind === "decision" && !canCreateDecision(member.role)) {
-        throw new Error("Only lead or reviewer can record a decision.");
+        throw new Error("只有负责人或复核人可以记录正式决策。");
       }
 
       room.notes.unshift({
@@ -245,7 +251,7 @@ export function createCollaborationStore() {
       });
       addActivity(
         room,
-        createActivity(member.name, member.role, "note", kind === "decision" ? "记录了一条协作决策。" : "添加了一条研究备注。"),
+        createActivity(member.name, member.role, kind === "decision" ? "记录决策" : "添加备注", kind === "decision" ? "记录了一条协作决策。" : "添加了一条研究备注。"),
       );
       touch(room);
       return cloneRoom(room);
@@ -260,7 +266,7 @@ export function createCollaborationStore() {
       const room = getOrCreateRoom(input.roomId);
       const member = requireMember(room, { memberId: input.memberId });
       if (!canCreateTask(member.role)) {
-        throw new Error("Only lead can create collaboration tasks.");
+        throw new Error("只有负责人可以创建协作任务。");
       }
 
       room.tasks.unshift({
@@ -271,7 +277,7 @@ export function createCollaborationStore() {
         statusLabel: "待处理",
         createdAt: nowIso(),
       });
-      addActivity(room, createActivity(member.name, member.role, "task_create", `创建任务：${input.title}`));
+      addActivity(room, createActivity(member.name, member.role, "创建任务", `创建任务：${input.title}`));
       touch(room);
       return cloneRoom(room);
     },
@@ -280,12 +286,12 @@ export function createCollaborationStore() {
       const room = getOrCreateRoom(input.roomId);
       const member = requireMember(room, { memberId: input.memberId });
       if (!canToggleTask(member.role)) {
-        throw new Error("Only lead or reviewer can change task status.");
+        throw new Error("只有负责人或复核人可以修改任务状态。");
       }
 
       const task = room.tasks.find((item) => item.id === input.taskId);
       if (!task) {
-        throw new Error("Task not found.");
+        throw new Error("未找到对应任务。");
       }
 
       if (task.status === "todo") {
@@ -298,7 +304,7 @@ export function createCollaborationStore() {
         task.completedAt = undefined;
       }
 
-      addActivity(room, createActivity(member.name, member.role, "task_toggle", `更新任务状态：${task.title} -> ${task.statusLabel}`));
+      addActivity(room, createActivity(member.name, member.role, "更新任务", `更新任务状态：${task.title} -> ${task.statusLabel}`));
       touch(room);
       return cloneRoom(room);
     },

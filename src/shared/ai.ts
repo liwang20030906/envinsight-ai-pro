@@ -316,6 +316,17 @@ function trimSentence(text: string, length = 140): string {
   return text.length > length ? `${text.slice(0, length - 1).trim()}...` : text;
 }
 
+function chineseOnlySummary(text: string | undefined, fallback: string): string {
+  const value = (text || "").trim();
+  if (!value) {
+    return fallback;
+  }
+  if (/[\u4e00-\u9fa5]/.test(value)) {
+    return trimSentence(value, 100);
+  }
+  return fallback;
+}
+
 export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExplainers & {
   title: string;
   oneSentenceSummary: string;
@@ -326,27 +337,39 @@ export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExpl
   const lead = sentences[0] || input.abstract || input.title;
   const support = sentences[1] || sentences[0] || input.abstract || input.title;
   const method = sentences[2] || support;
+  const leadCN = chineseOnlySummary(
+    lead,
+    `研究首先指出，${input.category || "环境健康"}议题正在成为一个值得公众关注的问题。`,
+  );
+  const supportCN = chineseOnlySummary(
+    support,
+    "摘要进一步说明，这类环境暴露或变化与真实健康结局之间可能存在值得继续追踪的联系。",
+  );
+  const methodCN = chineseOnlySummary(
+    method,
+    "从摘要能看出，研究者使用了数据分析、实验观察或系统比较的方法来验证这个问题。",
+  );
   const translatedTitle = /[\u4e00-\u9fa5]/.test(input.title)
     ? input.title
-    : `研究关注：${input.title}`;
+    : `${input.category || "环境健康"}研究速读：一项值得关注的新发现`;
   const summary = trimSentence(
     `这篇发表于${input.journal || "学术期刊"}的研究用大白话来说是：${input.category || "环境健康"}变化，可能会影响真实健康或暴露结果。`,
     110,
   );
 
   const translatedAbstract = [
-    `中文导读：这篇论文主要想回答“${input.title}”背后的现实问题。`,
-    `从摘要来看，研究者先描述了一个值得关注的环境健康现象：${trimSentence(lead, 90)}`,
-    `然后又补充说明了研究中最关键的发现或背景：${trimSentence(support, 90)}`,
+    `中文导读：这篇论文主要想回答一个和${input.category || "环境健康"}有关的现实问题。`,
+    `从摘要来看，研究者先描述了一个值得关注的环境健康现象：${leadCN}`,
+    `然后又补充说明了研究中最关键的发现或背景：${supportCN}`,
     `如果只记一句话，可以把它理解成：这项研究提示 ${input.category || "环境健康"} 议题和真实健康风险之间可能存在值得继续验证的联系。`,
   ].join("");
   const plainLanguageSummary = trimSentence(
-    `一句大白话：它不是在告诉你“已经被完全证明了什么”，而是在提醒我们——这个环境因素可能真的会影响健康，值得继续关注和验证。`,
+    `一句大白话：它不是在告诉你“已经被完全证明了什么”，而是在提醒我们——某种环境因素可能真的会影响健康，值得继续关注和验证。`,
     120,
   );
   const keyFindings = [
-    trimSentence(`研究最核心的观察是：${lead}`, 120),
-    trimSentence(`摘要进一步补充的关键信息是：${support}`, 120),
+    trimSentence(`研究最核心的观察是：${leadCN}`, 120),
+    trimSentence(`摘要进一步补充的关键信息是：${supportCN}`, 120),
     trimSentence(
       input.citedByCount != null
         ? `这篇论文目前已被引用约 ${input.citedByCount} 次，说明它在学术讨论中已有一定关注度。`
@@ -374,7 +397,7 @@ export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExpl
     160,
   );
   const howStudyWorked = trimSentence(
-    `从摘要看，研究大致采用了这样的思路：先界定研究问题，再采集或整理相关暴露与结局数据，最后用统计或实验方法评估二者之间的关系。摘要中提到的关键信息是：${method}`,
+    `从摘要看，研究大致采用了这样的思路：先界定研究问题，再采集或整理相关暴露与结局数据，最后用统计或实验方法评估二者之间的关系。摘要中提到的关键信息可以概括为：${methodCN}`,
     180,
   );
   const everydayMeaning = trimSentence(
@@ -382,9 +405,9 @@ export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExpl
     160,
   );
   const plainTextContent = [
-    `《${translatedTitle}》这篇研究，如果翻成大众语言，可以理解成：研究者正在检查一个环境变化，看看它会不会和真实健康结果、暴露水平或公共卫生压力有关。`,
-    `先看最重要的发现。摘要里最值得抓住的两点是：${lead}；以及 ${support}。这并不一定代表“已经完全证明”，但至少说明这个问题值得继续追踪。`,
-    `再看研究怎么做。摘要透露出的关键信息是：${method}。换句话说，研究者不是只在表达观点，而是在尝试用数据、实验或统计方法去回答问题。`,
+    `这篇研究如果翻成大众语言，可以理解成：研究者正在检查一个环境变化，看看它会不会和真实健康结果、暴露水平或公共卫生压力有关。`,
+    `先看最重要的发现。摘要里最值得抓住的两点是：${leadCN}；以及 ${supportCN}。这并不一定代表“已经完全证明”，但至少说明这个问题值得继续追踪。`,
+    `再看研究怎么做。摘要透露出的关键信息可以概括为：${methodCN}。换句话说，研究者不是只在表达观点，而是在尝试用数据、实验或统计方法去回答问题。`,
     `如果把它放到日常生活里理解，这项研究其实是在提醒大家：面对“${input.category || "环境健康"}”议题时，哪些风险可能被低估了，哪些监测、预防或公共决策值得更早准备。`,
     `最后一定要记住：单篇论文更像“研究线索”，不是“终局答案”。如果要把它写成资讯或建议，必须同步写清楚样本范围、局限性和它还不能说明什么。`,
   ].join("\n\n");

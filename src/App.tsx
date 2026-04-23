@@ -65,6 +65,7 @@ import {
   PaperDraft,
   AuditLogEntry,
   WorkbenchFeedbackBrief,
+  WorkbenchNewsPublishReview,
 } from './types';
 import { discussWithAI, getAIAnalysisStream, getWhatIfAnalysis } from './services/aiService';
 import {
@@ -98,7 +99,7 @@ import {
   generateReport,
   reviewDataset,
 } from './services/workbenchService';
-import { buildImportedResearchLead, buildWorkbenchFeedbackBrief } from './shared/researchBridge';
+import { buildImportedResearchLead, buildWorkbenchFeedbackBrief, buildWorkbenchNewsPublishReview } from './shared/researchBridge';
 import type { User as UserType } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -155,6 +156,7 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('全部');
   const [importedLead, setImportedLead] = useState<ImportedResearchLead | null>(null);
   const [workbenchFeedback, setWorkbenchFeedback] = useState<WorkbenchFeedbackBrief | null>(null);
+  const [publishReview, setPublishReview] = useState<WorkbenchNewsPublishReview | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [view, setView] = useState<'news' | 'workbench' | 'analytics'>('news');
@@ -209,6 +211,7 @@ export default function App() {
 
   useEffect(() => {
     setWorkbenchFeedback(result ? buildWorkbenchFeedbackBrief(result, importedLead) : null);
+    setPublishReview(result ? buildWorkbenchNewsPublishReview(result, importedLead) : null);
   }, [result, importedLead]);
 
   useEffect(() => {
@@ -920,7 +923,7 @@ export default function App() {
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="flex-1">
                   <h2 className="text-3xl font-bold text-gray-900">环境健康头条</h2>
-                  <p className="text-gray-500 mt-1">基于真实论文抓取的环境科研资讯与详细通俗化解读</p>
+                  <p className="text-gray-500 mt-1">基于真实论文抓取，并自动翻译成中文大众读物的环境科研资讯流</p>
                   <div className="mt-6 relative max-w-xl">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                     <input
@@ -1882,6 +1885,71 @@ export default function App() {
                     <p className="text-xs text-gray-500">
                       这块用于把科研工作台里的分析结果重新整理成大众资讯摘要，实现“论文线索 → 本地验证 → 公众解读”的闭环。
                     </p>
+                    {publishReview && (
+                      <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">能不能直接上传到资讯流？</p>
+                            <h4 className="text-lg font-bold text-gray-900 mt-1">{publishReview.headline}</h4>
+                            <p className="text-sm text-gray-600 mt-2 leading-relaxed">{publishReview.summary}</p>
+                          </div>
+                          <span
+                            className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest",
+                              publishReview.verdict === 'blocked'
+                                ? "bg-red-50 text-red-600 border border-red-200"
+                                : publishReview.verdict === 'review_required'
+                                  ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                  : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            )}
+                          >
+                            {publishReview.verdict === 'blocked'
+                              ? '禁止直发'
+                              : publishReview.verdict === 'review_required'
+                                ? '需人工复核'
+                                : '可进入编辑流程'}
+                          </span>
+                        </div>
+
+                        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                          <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">建议的大众资讯草稿</p>
+                          <h5 className="text-base font-bold text-gray-900">{publishReview.publicDraftTitle}</h5>
+                          <p className="text-sm text-gray-600 mt-2">{publishReview.publicDraftSummary}</p>
+                          <div className="mt-3 text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                            {publishReview.publicDraftBody}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">直接上传会遇到的问题，以及怎么解决</p>
+                          <div className="space-y-3">
+                            {publishReview.riskItems.map((risk) => (
+                              <div key={`${risk.title}-${risk.issue}`} className="rounded-2xl border border-gray-200 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-sm font-semibold text-gray-900">{risk.title}</p>
+                                  <span
+                                    className={cn(
+                                      "text-[10px] font-bold uppercase tracking-widest",
+                                      risk.severity === 'high'
+                                        ? "text-red-600"
+                                        : risk.severity === 'medium'
+                                          ? "text-amber-600"
+                                          : "text-emerald-600"
+                                    )}
+                                  >
+                                    {risk.severity}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-600 mt-2 leading-relaxed">{risk.issue}</p>
+                                <p className="text-sm text-emerald-700 mt-2 leading-relaxed">解决方案：{risk.solution}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <KeyValueList title="推荐发布流程" items={publishReview.requiredActions} />
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-gray-500">
@@ -2595,11 +2663,23 @@ function NewsDetail({
           <div className="mt-12 rounded-3xl border border-gray-100 bg-gray-50 p-6">
             <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-3">摘要通俗版</h3>
             <p className="text-base text-gray-700 leading-relaxed">{item.translatedAbstract}</p>
+            {item.explainers?.plainLanguageSummary && (
+              <div className="mt-4 rounded-2xl border border-emerald-100 bg-white px-4 py-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">一句大白话</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{item.explainers.plainLanguageSummary}</p>
+              </div>
+            )}
           </div>
         )}
 
         {item.explainers && (
           <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {item.explainers.translatedTitle && (
+              <div className="rounded-3xl border border-gray-100 p-6 md:col-span-2">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">论文标题怎么理解</h3>
+                <p className="text-sm text-gray-700 leading-relaxed">{item.explainers.translatedTitle}</p>
+              </div>
+            )}
             <div className="rounded-3xl border border-gray-100 p-6">
               <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">为什么值得关注</h3>
               <p className="text-sm text-gray-700 leading-relaxed">{item.explainers.whyItMatters}</p>
@@ -2636,6 +2716,16 @@ function NewsDetail({
                 </ul>
               </div>
             </div>
+            {item.explainers.publicCautions && item.explainers.publicCautions.length > 0 && (
+              <div className="rounded-3xl border border-amber-100 bg-amber-50 p-6 md:col-span-2">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-amber-700 mb-3">大众阅读时要注意什么</h3>
+                <ul className="space-y-2 text-sm text-amber-900">
+                  {item.explainers.publicCautions.map((point) => (
+                    <li key={point}>- {point}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 

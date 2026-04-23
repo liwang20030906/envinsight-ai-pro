@@ -214,6 +214,9 @@ test("generatePaperNewsDigest falls back locally when OPENAI_API_KEY is missing"
     assert.equal(result.provider, "local-fallback");
     assert.ok(result.result.keyFindings.length >= 3);
     assert.match(result.result.whyItMatters, /环境健康|值得关注/);
+    assert.match(result.result.translatedAbstract, /中文导读|这篇论文/);
+    assert.ok(result.result.publicCautions?.length);
+    assert.ok(result.result.plainLanguageSummary);
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = previousKey;

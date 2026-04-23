@@ -204,12 +204,15 @@ export interface Comment {
 }
 
 export interface NewsExplainers {
+  translatedTitle?: string;
+  plainLanguageSummary?: string;
   whyItMatters: string;
   howStudyWorked: string;
   keyFindings: string[];
   limitations: string[];
   everydayMeaning: string;
   readerActions: string[];
+  publicCautions?: string[];
 }
 
 export interface NewsItem {
@@ -266,6 +269,25 @@ export interface WorkbenchFeedbackBrief {
   summary: string;
   highlights: string[];
   caution: string;
+}
+
+export interface PublishRiskItem {
+  title: string;
+  severity: "low" | "medium" | "high";
+  issue: string;
+  solution: string;
+}
+
+export interface WorkbenchNewsPublishReview {
+  verdict: "blocked" | "review_required" | "ready_with_review";
+  directPublishAllowed: boolean;
+  headline: string;
+  summary: string;
+  publicDraftTitle: string;
+  publicDraftSummary: string;
+  publicDraftBody: string;
+  riskItems: PublishRiskItem[];
+  requiredActions: string[];
 }
 
 export interface AnalyticsEvent {

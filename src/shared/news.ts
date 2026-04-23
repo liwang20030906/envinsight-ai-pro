@@ -58,12 +58,15 @@ type NewsSeed = {
   citedByCount?: number;
   doi?: string | null;
   explainers?: {
+    translatedTitle?: string;
+    plainLanguageSummary?: string;
     whyItMatters: string;
     howStudyWorked: string;
     keyFindings: string[];
     limitations: string[];
     everydayMeaning: string;
     readerActions: string[];
+    publicCautions?: string[];
   };
   isOpenAccess?: boolean;
   publicationYear?: number;
@@ -233,8 +236,9 @@ export async function buildNewsItemFromOpenAlexWork(work: OpenAlexWork): Promise
     citedByCount: work.cited_by_count,
     category,
   };
+  const useAIDigest = process.env.NODE_ENV !== "test" && process.env.DISABLE_NEWS_AI_SUMMARY !== "true";
   const digest =
-    process.env.ENABLE_NEWS_AI_SUMMARY === "true"
+    useAIDigest
       ? await generatePaperNewsDigest(digestInput)
       : { provider: "local-fallback" as const, result: buildLocalPaperNewsDigest(digestInput) };
 
@@ -258,12 +262,15 @@ export async function buildNewsItemFromOpenAlexWork(work: OpenAlexWork): Promise
     citedByCount: work.cited_by_count,
     doi: work.doi || null,
     explainers: {
+      translatedTitle: digest.result.translatedTitle,
+      plainLanguageSummary: digest.result.plainLanguageSummary,
       whyItMatters: digest.result.whyItMatters,
       howStudyWorked: digest.result.howStudyWorked,
       keyFindings: digest.result.keyFindings,
       limitations: digest.result.limitations,
       everydayMeaning: digest.result.everydayMeaning,
       readerActions: digest.result.readerActions,
+      publicCautions: digest.result.publicCautions,
     },
     isOpenAccess: Boolean(work.open_access?.is_oa),
     publicationYear: work.publication_year || undefined,

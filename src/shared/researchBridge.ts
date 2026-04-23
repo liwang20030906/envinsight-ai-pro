@@ -1,4 +1,11 @@
-import type { AnalysisResult, ImportedResearchLead, NewsItem, WorkbenchFeedbackBrief } from "../types";
+import type {
+  AnalysisResult,
+  ImportedResearchLead,
+  NewsItem,
+  WorkbenchFeedbackBrief,
+  WorkbenchNewsPublishReview,
+  PublishRiskItem,
+} from "../types";
 
 function cleanSentence(value: string | undefined, fallback: string): string {
   const trimmed = value?.trim();
@@ -42,6 +49,17 @@ function buildDataNeeds(item: NewsItem, dataset: ImportedResearchLead["suggested
   }
 
   return base;
+}
+
+function buildPublishRisk(title: string, severity: PublishRiskItem["severity"], issue: string, solution: string): PublishRiskItem {
+  return { title, severity, issue, solution };
+}
+
+function buildPublicDraftTitle(result: AnalysisResult, lead?: ImportedResearchLead | null): string {
+  if (lead) {
+    return `${lead.category}新进展：本地数据对“${lead.title}”做了进一步验证`;
+  }
+  return `EnvInsight 研究快讯：${result.columns.x} 与 ${result.columns.y} 的最新分析`;
 }
 
 export function buildImportedResearchLead(item: NewsItem): ImportedResearchLead {
@@ -98,5 +116,116 @@ export function buildWorkbenchFeedbackBrief(result: AnalysisResult, lead?: Impor
     caution: lead
       ? "这是从资讯论文导入后的验证性分析摘要，适合回流到资讯侧作为“后续研究进展”，但仍需补充样本来源和局限说明。"
       : "适合转成公众资讯，但发布前仍应补充局限性、适用范围与非医疗免责声明。",
+  };
+}
+
+export function buildWorkbenchNewsPublishReview(
+  result: AnalysisResult,
+  lead?: ImportedResearchLead | null,
+): WorkbenchNewsPublishReview {
+  const riskItems: PublishRiskItem[] = [];
+  const requiredActions: string[] = [];
+
+  if (result.complianceReview?.status === "blocked") {
+    riskItems.push(
+      buildPublishRisk(
+        "隐私/版权阻断",
+        "high",
+        "当前数据合规审查已阻断，说明结果里可能仍带有敏感字段或受限文本来源，不能直接进入大众资讯流。",
+        "先完成字段脱敏、来源核验和审计记录补齐，再考虑生成公众内容。",
+      ),
+    );
+  }
+
+  if (!lead) {
+    riskItems.push(
+      buildPublishRisk(
+        "来源脉络不足",
+        "medium",
+        "当前工作台结果没有绑定一篇明确的资讯论文线索，公众读者难以理解研究背景和来源边界。",
+        "优先从资讯论文导入，或补充原始研究背景、数据来源和为什么值得关注。",
+      ),
+    );
+  }
+
+  if (result.summary.n < 20) {
+    riskItems.push(
+      buildPublishRisk(
+        "样本量偏小",
+        "high",
+        `当前样本量仅 ${result.summary.n}，容易让公众把探索性分析误解成稳健结论。`,
+        "在资讯稿中明确写成“初步观察/探索性分析”，并补充样本扩充计划。",
+      ),
+    );
+  }
+
+  if (result.summary.pValue == null || result.summary.pValue >= 0.05) {
+    riskItems.push(
+      buildPublishRisk(
+        "证据强度有限",
+        result.summary.pValue == null ? "high" : "medium",
+        "当前结果还不足以支持强结论，若直接发布，容易把相关性或趋势写成已经被证明的事实。",
+        "改用“提示/观察到/需要进一步验证”这类措辞，并突出局限性。",
+      ),
+    );
+  }
+
+  if (!lead?.isOpenAccess) {
+    riskItems.push(
+      buildPublishRisk(
+        "论文版权与引用边界",
+        "medium",
+        "如果原论文不是开放获取或来源边界不清，资讯侧不能直接搬运原文表述或图表。",
+        "只发布基于证据链的改写摘要，保留原文链接、期刊、作者，并避免复用受限内容。",
+      ),
+    );
+  }
+
+  riskItems.push(
+    buildPublishRisk(
+      "公众表达风险",
+      "medium",
+      "科研工作台的结论是面向研究者的，直接放到资讯流容易过度专业、因果化，甚至被理解为个体医疗建议。",
+      "自动转成大众语言后，再加人工复核：去术语、加背景、加局限、加非医疗免责声明。",
+    ),
+  );
+
+  requiredActions.push(
+    "保留来源、期刊、样本范围与分析方法的最小必要说明。",
+    "把所有“导致/证明”改成“相关/提示/观察到”，除非有足够因果设计支持。",
+    "补一段局限性和适用边界，避免公众把探索性结果理解成普遍结论。",
+    "增加非医疗建议声明，并由人工审核后再发布到资讯流。",
+  );
+
+  const highRiskCount = riskItems.filter((item) => item.severity === "high").length;
+  const verdict: WorkbenchNewsPublishReview["verdict"] =
+    highRiskCount > 0 ? "blocked" : riskItems.length > 2 ? "review_required" : "ready_with_review";
+  const directPublishAllowed = verdict === "ready_with_review";
+  const summary =
+    verdict === "blocked"
+      ? "当前不建议把科研工作台结果直接上传到资讯侧，至少需要先完成脱敏、来源补充和结论降级表述。"
+      : verdict === "review_required"
+        ? "可以整理成资讯草稿，但必须先经过 AI 改写 + 人工复核，不能直接自动发布。"
+        : "可以进入资讯编辑流程，但仍建议保留来源说明、局限性和人工复核。";
+
+  return {
+    verdict,
+    directPublishAllowed,
+    headline: directPublishAllowed ? "可进入资讯编辑流程" : "不建议直接上传到资讯流",
+    summary,
+    publicDraftTitle: buildPublicDraftTitle(result, lead),
+    publicDraftSummary:
+      lead
+        ? `围绕《${lead.title}》的后续分析显示，${result.columns.x} 与 ${result.columns.y} 存在值得继续关注的关系，但目前仍应把它视为验证性或探索性结果。`
+        : `工作台分析观察到 ${result.columns.x} 与 ${result.columns.y} 存在一定关联，不过发布到大众资讯前还需要补充来源、局限性和风险说明。`,
+    publicDraftBody: [
+      lead
+        ? `我们基于资讯论文《${lead.title}》提出的研究线索，用本地数据做了进一步分析。结果显示，${result.columns.x} 与 ${result.columns.y} 之间存在值得关注的变化关系。`
+        : `我们在科研工作台中完成了一轮环境健康数据分析，发现 ${result.columns.x} 与 ${result.columns.y} 之间存在一定变化趋势。`,
+      `但这类结果更适合被理解为“研究进展”而不是“最终定论”。样本量、研究设计、统计显著性和适用人群都会影响公众如何解读这条资讯。`,
+      `因此，真正发布到资讯流前，应该先把专业结论翻译成大众语言，同时写清楚：研究针对谁、结果有多稳、不能据此做什么个人医疗判断。`,
+    ].join("\n\n"),
+    riskItems,
+    requiredActions,
   };
 }

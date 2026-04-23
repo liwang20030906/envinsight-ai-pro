@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildImportedResearchLead, buildWorkbenchFeedbackBrief } from "../src/shared/researchBridge";
+import {
+  buildImportedResearchLead,
+  buildWorkbenchFeedbackBrief,
+  buildWorkbenchNewsPublishReview,
+} from "../src/shared/researchBridge";
 import type { AnalysisResult, NewsItem } from "../src/types";
 
 const sampleNews: NewsItem = {
@@ -24,6 +28,8 @@ const sampleNews: NewsItem = {
     limitations: ["仍需更多地区样本验证。"],
     everydayMeaning: "普通人可以把它理解为高污染日更需要减少暴露。",
     readerActions: ["关注暴露窗口定义", "关注混杂因素控制"],
+    plainLanguageSummary: "一句话理解：空气更差时，呼吸系统压力可能更大。",
+    publicCautions: ["不要把单篇论文理解成最终定论。"],
   },
 };
 
@@ -72,4 +78,34 @@ test("buildWorkbenchFeedbackBrief creates a news-loop summary", () => {
   assert.match(brief.summary, /R²=0.910/);
   assert.equal(brief.highlights.length, 3);
   assert.match(brief.caution, /资讯侧|局限/);
+});
+
+test("buildWorkbenchNewsPublishReview blocks direct publishing for exploratory results", () => {
+  const lead = buildImportedResearchLead(sampleNews);
+  const review = buildWorkbenchNewsPublishReview(
+    {
+      ...sampleResult,
+      summary: {
+        ...sampleResult.summary,
+        n: 12,
+        pValue: 0.12,
+      },
+      complianceReview: {
+        status: "warning",
+        riskLevel: "medium",
+        findings: [],
+        suggestions: [],
+        summary: "warning",
+      },
+    },
+    {
+      ...lead,
+      isOpenAccess: false,
+    },
+  );
+
+  assert.equal(review.directPublishAllowed, false);
+  assert.match(review.summary, /不建议|不能直接|必须/);
+  assert.ok(review.riskItems.some((item) => item.title.includes("样本量")));
+  assert.ok(review.requiredActions.length >= 3);
 });

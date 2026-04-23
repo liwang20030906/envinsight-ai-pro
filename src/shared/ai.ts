@@ -9,7 +9,7 @@ import type {
   StatsSummary,
 } from "../types";
 
-const MODEL = process.env.OPENAI_MODEL || "gpt-5.2";
+const MODEL = process.env.OPENAI_MODEL || "gpt-5-mini";
 
 type WhatIfInput = {
   pm25Change: number;
@@ -326,15 +326,27 @@ export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExpl
   const lead = sentences[0] || input.abstract || input.title;
   const support = sentences[1] || sentences[0] || input.abstract || input.title;
   const method = sentences[2] || support;
+  const translatedTitle = /[\u4e00-\u9fa5]/.test(input.title)
+    ? input.title
+    : `研究关注：${input.title}`;
   const summary = trimSentence(
-    `这篇发表于${input.journal || "学术期刊"}的研究重点关注“${input.title}”，核心信息是：${lead}`,
+    `这篇发表于${input.journal || "学术期刊"}的研究用大白话来说是：${input.category || "环境健康"}变化，可能会影响真实健康或暴露结果。`,
     110,
   );
 
-  const translatedAbstract = `通俗摘要：这篇论文关注“${input.title}”。研究摘要首先提到：${lead}。接着又说明：${support}`;
+  const translatedAbstract = [
+    `中文导读：这篇论文主要想回答“${input.title}”背后的现实问题。`,
+    `从摘要来看，研究者先描述了一个值得关注的环境健康现象：${trimSentence(lead, 90)}`,
+    `然后又补充说明了研究中最关键的发现或背景：${trimSentence(support, 90)}`,
+    `如果只记一句话，可以把它理解成：这项研究提示 ${input.category || "环境健康"} 议题和真实健康风险之间可能存在值得继续验证的联系。`,
+  ].join("");
+  const plainLanguageSummary = trimSentence(
+    `一句大白话：它不是在告诉你“已经被完全证明了什么”，而是在提醒我们——这个环境因素可能真的会影响健康，值得继续关注和验证。`,
+    120,
+  );
   const keyFindings = [
-    trimSentence(`研究的核心观察是：${lead}`, 120),
-    trimSentence(`摘要进一步补充：${support}`, 120),
+    trimSentence(`研究最核心的观察是：${lead}`, 120),
+    trimSentence(`摘要进一步补充的关键信息是：${support}`, 120),
     trimSentence(
       input.citedByCount != null
         ? `这篇论文目前已被引用约 ${input.citedByCount} 次，说明它在学术讨论中已有一定关注度。`
@@ -346,6 +358,11 @@ export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExpl
     "这里只是基于论文摘要做通俗化解读，摘要通常不会完整呈现所有实验细节和统计检验。",
     "如果要把它用于科研决策，还需要回到原文查看样本量、研究设计、混杂因素控制和局限性声明。",
     "单篇论文更适合提供线索，不适合直接替代系统综述或临床/政策结论。",
+  ];
+  const publicCautions = [
+    "不要把单篇论文的结果直接理解为对每个人都成立。",
+    "不要把“相关”自动理解成“因果”或“已经证明”。",
+    "如果涉及健康风险判断，仍应以医生、指南或系统综述为准。",
   ];
   const readerActions = [
     "先看研究对象和暴露指标是不是与你关心的人群或场景一致。",
@@ -361,15 +378,15 @@ export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExpl
     180,
   );
   const everydayMeaning = trimSentence(
-    `对普通读者来说，这篇论文更像是在回答“这种环境暴露会不会影响我的健康或生活环境”。它不能直接给出个人诊断，但能帮助我们知道哪些风险值得持续关注。`,
+    `对普通读者来说，这篇论文更像是在回答“这种环境变化是不是可能影响我的健康或生活环境”。它不能直接给出个人诊断，但能帮助我们知道哪些风险值得更早关注。`,
     160,
   );
   const plainTextContent = [
-    `这篇研究题目是《${input.title}》。如果把它翻成日常语言，它关注的是一个很现实的问题：环境中的某种变化，是否会对人的健康、暴露水平或公共卫生系统带来影响。`,
-    `先看结论层面，摘要里最值得抓住的两点是：${lead}；以及 ${support}`,
-    `再看研究怎么做，摘要透露出的关键信息是：${method}。这意味着研究者并不是只做观点判断，而是试图用数据、实验或系统分析来回答问题。`,
-    `如果把它放到日常生活里理解，这项研究更像是在告诉我们：面对“${input.category || "环境健康"}”议题时，哪些风险可能被低估了，哪些行为或监测值得提前准备。`,
-    `不过也要注意，摘要不等于全文。真正做研究引用时，还要回到原文看样本量、方法学、统计显著性和作者自己写的局限性。`,
+    `《${translatedTitle}》这篇研究，如果翻成大众语言，可以理解成：研究者正在检查一个环境变化，看看它会不会和真实健康结果、暴露水平或公共卫生压力有关。`,
+    `先看最重要的发现。摘要里最值得抓住的两点是：${lead}；以及 ${support}。这并不一定代表“已经完全证明”，但至少说明这个问题值得继续追踪。`,
+    `再看研究怎么做。摘要透露出的关键信息是：${method}。换句话说，研究者不是只在表达观点，而是在尝试用数据、实验或统计方法去回答问题。`,
+    `如果把它放到日常生活里理解，这项研究其实是在提醒大家：面对“${input.category || "环境健康"}”议题时，哪些风险可能被低估了，哪些监测、预防或公共决策值得更早准备。`,
+    `最后一定要记住：单篇论文更像“研究线索”，不是“终局答案”。如果要把它写成资讯或建议，必须同步写清楚样本范围、局限性和它还不能说明什么。`,
   ].join("\n\n");
 
   return {
@@ -377,12 +394,15 @@ export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExpl
     oneSentenceSummary: summary,
     translatedAbstract,
     plainTextContent,
+    translatedTitle,
+    plainLanguageSummary,
     whyItMatters,
     howStudyWorked,
     keyFindings,
     limitations,
     everydayMeaning,
     readerActions,
+    publicCautions,
   };
 }
 
@@ -390,18 +410,26 @@ export async function generatePaperNewsDigest(input: PaperNewsDigestInput): Prom
   provider: "openai" | "local-fallback";
   result: ReturnType<typeof buildLocalPaperNewsDigest>;
 }> {
-  const instructions = `你是一位面向大众的环境健康科学记者。请把论文信息转成详细但通俗的中文科普解读。
+  const instructions = `你是一位面向大众的环境健康科学记者。请把论文信息转成详细、准确、通俗的简体中文科普解读。
+要求：
+- 必须忠于原始论文摘要，不要编造数据、样本量或结论
+- 明确区分“观察到相关”与“证明因果”
+- 语言尽量口语化，避免术语堆砌；出现专业概念时要换成大众能懂的话
+- 输出内容面向资讯 feeds 流，适合大众快速阅读
 你必须输出纯 JSON（不要 markdown 代码块），字段必须包含：
 - title
 - oneSentenceSummary
 - translatedAbstract
 - plainTextContent
+- translatedTitle
+- plainLanguageSummary
 - whyItMatters
 - howStudyWorked
 - keyFindings (string[])
 - limitations (string[])
 - everydayMeaning
-- readerActions (string[])`;
+- readerActions (string[])
+- publicCautions (string[])`;
 
   const prompt = JSON.stringify(input);
   const openAIText = await callOpenAI(prompt, 4096, instructions);

@@ -203,6 +203,15 @@ export interface Comment {
   timestamp: string;
 }
 
+export interface NewsExplainers {
+  whyItMatters: string;
+  howStudyWorked: string;
+  keyFindings: string[];
+  limitations: string[];
+  everydayMeaning: string;
+  readerActions: string[];
+}
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -212,6 +221,11 @@ export interface NewsItem {
   date: string;
   imageUrl: string;
   likesCount: number;
+  translatedAbstract?: string;
+  authors?: string[];
+  citedByCount?: number;
+  doi?: string;
+  explainers?: NewsExplainers;
   sourceLink?: string;
   sourceJournal?: string;
   comments?: Comment[];

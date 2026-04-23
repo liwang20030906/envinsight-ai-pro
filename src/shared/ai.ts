@@ -4,6 +4,7 @@ import type {
   AnalysisResult,
   ComplianceGuidance,
   DiscussionResponse,
+  NewsExplainers,
   PaperDraft,
   StatsSummary,
 } from "../types";
@@ -291,6 +292,134 @@ export async function generateTranslatedPaper(abstract: string): Promise<{
       translatedAbstract: abstract,
       sourceJournal: "Unknown Journal",
     },
+  };
+}
+
+type PaperNewsDigestInput = {
+  title: string;
+  abstract: string;
+  journal?: string;
+  publicationDate?: string;
+  citedByCount?: number;
+  category?: string;
+};
+
+function extractSentences(text: string): string[] {
+  return text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function trimSentence(text: string, length = 140): string {
+  return text.length > length ? `${text.slice(0, length - 1).trim()}...` : text;
+}
+
+export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExplainers & {
+  title: string;
+  oneSentenceSummary: string;
+  translatedAbstract: string;
+  plainTextContent: string;
+} {
+  const sentences = extractSentences(input.abstract);
+  const lead = sentences[0] || input.abstract || input.title;
+  const support = sentences[1] || sentences[0] || input.abstract || input.title;
+  const method = sentences[2] || support;
+  const summary = trimSentence(
+    `这篇发表于${input.journal || "学术期刊"}的研究重点关注“${input.title}”，核心信息是：${lead}`,
+    110,
+  );
+
+  const translatedAbstract = `通俗摘要：这篇论文关注“${input.title}”。研究摘要首先提到：${lead}。接着又说明：${support}`;
+  const keyFindings = [
+    trimSentence(`研究的核心观察是：${lead}`, 120),
+    trimSentence(`摘要进一步补充：${support}`, 120),
+    trimSentence(
+      input.citedByCount != null
+        ? `这篇论文目前已被引用约 ${input.citedByCount} 次，说明它在学术讨论中已有一定关注度。`
+        : `论文发表于 ${input.publicationDate || "近年"}，更适合和最新研究一起交叉阅读。`,
+      120,
+    ),
+  ];
+  const limitations = [
+    "这里只是基于论文摘要做通俗化解读，摘要通常不会完整呈现所有实验细节和统计检验。",
+    "如果要把它用于科研决策，还需要回到原文查看样本量、研究设计、混杂因素控制和局限性声明。",
+    "单篇论文更适合提供线索，不适合直接替代系统综述或临床/政策结论。",
+  ];
+  const readerActions = [
+    "先看研究对象和暴露指标是不是与你关心的人群或场景一致。",
+    "再看论文方法是否能支持它提出的结论，特别要关注样本量和对照设计。",
+    "如果要引用到报告或论文里，建议和至少 2-3 篇同主题研究交叉验证。",
+  ];
+  const whyItMatters = trimSentence(
+    `它之所以重要，是因为这项研究把“${input.category || "环境健康"}”问题和真实健康或暴露结果联系起来，帮助非专业读者快速理解这类风险为什么值得关注。`,
+    160,
+  );
+  const howStudyWorked = trimSentence(
+    `从摘要看，研究大致采用了这样的思路：先界定研究问题，再采集或整理相关暴露与结局数据，最后用统计或实验方法评估二者之间的关系。摘要中提到的关键信息是：${method}`,
+    180,
+  );
+  const everydayMeaning = trimSentence(
+    `对普通读者来说，这篇论文更像是在回答“这种环境暴露会不会影响我的健康或生活环境”。它不能直接给出个人诊断，但能帮助我们知道哪些风险值得持续关注。`,
+    160,
+  );
+  const plainTextContent = [
+    `这篇研究题目是《${input.title}》。如果把它翻成日常语言，它关注的是一个很现实的问题：环境中的某种变化，是否会对人的健康、暴露水平或公共卫生系统带来影响。`,
+    `先看结论层面，摘要里最值得抓住的两点是：${lead}；以及 ${support}`,
+    `再看研究怎么做，摘要透露出的关键信息是：${method}。这意味着研究者并不是只做观点判断，而是试图用数据、实验或系统分析来回答问题。`,
+    `如果把它放到日常生活里理解，这项研究更像是在告诉我们：面对“${input.category || "环境健康"}”议题时，哪些风险可能被低估了，哪些行为或监测值得提前准备。`,
+    `不过也要注意，摘要不等于全文。真正做研究引用时，还要回到原文看样本量、方法学、统计显著性和作者自己写的局限性。`,
+  ].join("\n\n");
+
+  return {
+    title: input.title,
+    oneSentenceSummary: summary,
+    translatedAbstract,
+    plainTextContent,
+    whyItMatters,
+    howStudyWorked,
+    keyFindings,
+    limitations,
+    everydayMeaning,
+    readerActions,
+  };
+}
+
+export async function generatePaperNewsDigest(input: PaperNewsDigestInput): Promise<{
+  provider: "openai" | "local-fallback";
+  result: ReturnType<typeof buildLocalPaperNewsDigest>;
+}> {
+  const instructions = `你是一位面向大众的环境健康科学记者。请把论文信息转成详细但通俗的中文科普解读。
+你必须输出纯 JSON（不要 markdown 代码块），字段必须包含：
+- title
+- oneSentenceSummary
+- translatedAbstract
+- plainTextContent
+- whyItMatters
+- howStudyWorked
+- keyFindings (string[])
+- limitations (string[])
+- everydayMeaning
+- readerActions (string[])`;
+
+  const prompt = JSON.stringify(input);
+  const openAIText = await callOpenAI(prompt, 4096, instructions);
+  if (openAIText) {
+    try {
+      const cleaned = openAIText.replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
+      return {
+        provider: "openai",
+        result: JSON.parse(cleaned),
+      };
+    } catch {
+      // Fall back to local digest.
+    }
+  }
+
+  return {
+    provider: "local-fallback",
+    result: buildLocalPaperNewsDigest(input),
   };
 }
 

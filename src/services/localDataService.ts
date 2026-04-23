@@ -51,6 +51,11 @@ export async function fetchNews(params?: { q?: string; category?: string }): Pro
     date: item.publishDate || item.date || "",
     imageUrl: item.conceptImageUrl || item.imageUrl || "",
     likesCount: item.likes || 0,
+    translatedAbstract: item.translatedAbstract,
+    authors: item.authors || [],
+    citedByCount: item.citedByCount,
+    doi: item.doi,
+    explainers: item.explainers,
     sourceJournal: item.sourceJournal,
     sourceLink: item.sourceLink,
     comments: (item.comments || []).map((c: any) => ({
@@ -62,8 +67,12 @@ export async function fetchNews(params?: { q?: string; category?: string }): Pro
   }));
 }
 
-export async function crawlNews(): Promise<NewsItem[]> {
-  const res = await fetch("/api/news/crawl", { method: "POST" });
+export async function crawlNews(category?: string): Promise<NewsItem[]> {
+  const res = await fetch("/api/news/crawl", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category: category || "全部" }),
+  });
   if (!res.ok) throw new Error("Crawl failed");
   return res.json();
 }

@@ -340,7 +340,7 @@ export default function App() {
 
     setNewsLoading(true);
     try {
-      await crawlNews();
+      await crawlNews(activeCategory === '为你推荐' ? '全部' : activeCategory);
       loadNews();
     } catch (err) {
       console.error('Crawl failed:', err);
@@ -830,7 +830,7 @@ export default function App() {
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="flex-1">
                   <h2 className="text-3xl font-bold text-gray-900">环境健康头条</h2>
-                  <p className="text-gray-500 mt-1">AI 驱动的全球环境科研资讯实时解读</p>
+                  <p className="text-gray-500 mt-1">基于真实论文抓取的环境科研资讯与详细通俗化解读</p>
                   <div className="mt-6 relative max-w-xl">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                     <input
@@ -868,7 +868,7 @@ export default function App() {
                     onClick={handleCrawl}
                     disabled={newsLoading}
                     className="ml-2 p-2 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors disabled:opacity-50"
-                    title="抓取最新论文"
+                    title="抓取真实论文"
                   >
                     <RefreshCw size={18} className={newsLoading ? "animate-spin" : ""} />
                   </button>
@@ -2114,6 +2114,12 @@ function NewsStrip({ item, onClick }: { item: NewsItem; onClick: () => void }) {
           <span className="text-emerald-600">{item.category}</span>
           <span className="mx-1">&bull;</span>
           {item.date}
+          {item.sourceJournal ? (
+            <>
+              <span className="mx-1">&bull;</span>
+              <span className="truncate max-w-[140px] normal-case">{item.sourceJournal}</span>
+            </>
+          ) : null}
         </div>
         <h3 className="text-lg font-bold text-gray-900 leading-tight mb-2 group-hover:text-emerald-600 transition-colors truncate">
           {item.title}
@@ -2157,6 +2163,7 @@ function NewsCard({ item, featured, onClick }: { item: NewsItem; featured?: bool
             <Globe size={10} />
             <Calendar size={10} />
             {item.date}
+            {item.sourceJournal ? <span className="normal-case truncate max-w-[140px]">{item.sourceJournal}</span> : null}
           </div>
           <h3 className={cn("font-bold text-gray-900 leading-tight group-hover:text-emerald-600 transition-colors", featured ? "text-2xl mb-3" : "text-lg mb-2")}>
             {item.title}
@@ -2349,6 +2356,54 @@ function NewsDetail({ item, onBack, user, onLogin }: { item: NewsItem; onBack: (
           ))}
         </div>
 
+        {item.translatedAbstract && (
+          <div className="mt-12 rounded-3xl border border-gray-100 bg-gray-50 p-6">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-3">摘要通俗版</h3>
+            <p className="text-base text-gray-700 leading-relaxed">{item.translatedAbstract}</p>
+          </div>
+        )}
+
+        {item.explainers && (
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="rounded-3xl border border-gray-100 p-6">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">为什么值得关注</h3>
+              <p className="text-sm text-gray-700 leading-relaxed">{item.explainers.whyItMatters}</p>
+            </div>
+            <div className="rounded-3xl border border-gray-100 p-6">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">研究是怎么做的</h3>
+              <p className="text-sm text-gray-700 leading-relaxed">{item.explainers.howStudyWorked}</p>
+            </div>
+            <div className="rounded-3xl border border-gray-100 p-6">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">这篇论文最值得记住的点</h3>
+              <ul className="space-y-2 text-sm text-gray-700">
+                {item.explainers.keyFindings.map((point) => (
+                  <li key={point}>- {point}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-3xl border border-gray-100 p-6">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">局限与阅读提醒</h3>
+              <ul className="space-y-2 text-sm text-gray-700">
+                {item.explainers.limitations.map((point) => (
+                  <li key={point}>- {point}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-3xl border border-gray-100 p-6 md:col-span-2">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">对普通人意味着什么</h3>
+              <p className="text-sm text-gray-700 leading-relaxed">{item.explainers.everydayMeaning}</p>
+              <div className="mt-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">继续读这篇论文时可以重点看</p>
+                <ul className="space-y-2 text-sm text-gray-700">
+                  {item.explainers.readerActions.map((point) => (
+                    <li key={point}>- {point}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-16 pt-8 border-t border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold">AI</div>
@@ -2361,6 +2416,16 @@ function NewsDetail({ item, onBack, user, onLogin }: { item: NewsItem; onBack: (
             {item.sourceJournal && (
               <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full font-medium">
                 {item.sourceJournal}
+              </span>
+            )}
+            {item.citedByCount != null && (
+              <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full font-medium">
+                被引用 {item.citedByCount} 次
+              </span>
+            )}
+            {item.authors && item.authors.length > 0 && (
+              <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full font-medium">
+                {item.authors.slice(0, 3).join(" / ")}
               </span>
             )}
             {item.sourceLink && (

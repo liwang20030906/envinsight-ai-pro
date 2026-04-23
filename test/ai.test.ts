@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildLocalAnalysis,
+  generatePaperNewsDigest,
   buildLocalWhatIfAnalysis,
   generateComplianceGuidance,
   generateAnalysisText,
@@ -190,6 +191,29 @@ test("generateDiscussionResponse falls back locally when OPENAI_API_KEY is missi
     assert.equal(result.provider, "local-fallback");
     assert.equal(result.message.role, "assistant");
     assert.match(result.message.content, /脱敏|风险/);
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("generatePaperNewsDigest falls back locally when OPENAI_API_KEY is missing", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+
+  try {
+    const result = await generatePaperNewsDigest({
+      title: "PM2.5 exposure and hospital admissions",
+      abstract:
+        "This study examined short-term PM2.5 exposure and hospital admissions in a large cohort. Higher PM2.5 levels were associated with more respiratory visits.",
+      journal: "Environmental Health",
+      publicationDate: "2026-01-01",
+      citedByCount: 12,
+      category: "空气质量",
+    });
+    assert.equal(result.provider, "local-fallback");
+    assert.ok(result.result.keyFindings.length >= 3);
+    assert.match(result.result.whyItMatters, /环境健康|值得关注/);
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = previousKey;

@@ -15,6 +15,7 @@ import {
 import { createCollaborationStore } from "./src/shared/collaboration";
 import { reviewCompliance } from "./src/shared/compliance";
 import { buildModelComparison, pickRegressionViewData } from "./src/shared/modeling";
+import { fetchRealNews } from "./src/shared/news";
 import { buildDataProfile } from "./src/shared/profiling";
 import { buildPaperDraft, buildReport } from "./src/shared/reporting";
 import { calculateRegressionSummary } from "./src/shared/statistics";
@@ -126,6 +127,42 @@ async function startServer() {
     return entry;
   }
 
+  function mergeNewsItems(currentItems: any[], incomingItems: any[]) {
+    const merged = new Map<string, any>();
+    for (const item of [...incomingItems, ...currentItems]) {
+      const key = item.doi || item.sourceLink || item.id || item.title;
+      if (!merged.has(key)) {
+        merged.set(key, item);
+      }
+    }
+    return [...merged.values()].sort((a, b) => String(b.publishDate || "").localeCompare(String(a.publishDate || "")));
+  }
+
+  let hasHydratedRealNews = false;
+  let newsRefreshInFlight: Promise<void> | null = null;
+
+  async function refreshNews(category = "全部", force = false) {
+    if (newsRefreshInFlight && !force) {
+      return newsRefreshInFlight;
+    }
+
+    newsRefreshInFlight = (async () => {
+      try {
+        const fetched = await fetchRealNews(category, category === "全部" ? 10 : 6);
+        if (fetched.length > 0) {
+          newsItems = mergeNewsItems(newsItems, fetched);
+          hasHydratedRealNews = true;
+        }
+      } catch (error) {
+        console.error("[News] Failed to refresh real papers, keeping cached items.", error);
+      } finally {
+        newsRefreshInFlight = null;
+      }
+    })();
+
+    return newsRefreshInFlight;
+  }
+
   // Mock News Database
   let newsItems: any[] = [
     {
@@ -209,8 +246,11 @@ async function startServer() {
     { id: "20", title: "碳税政策对减少工业碳排放的实证分析", oneSentenceSummary: "实施碳税的国家工业碳强度平均下降了8%。", conceptImageUrl: "https://picsum.photos/seed/carbon/400/300", plainTextContent: "经济杠杆是推动绿色转型的有效工具。", sourceJournal: "Energy Policy", sourceLink: "https://scholar.google.com/scholar?q=carbon+tax+emissions+policy", publishDate: "2026-02-20", category: "政策解读", likes: 0, comments: [] }
   ];
 
-  app.get("/api/news", (req, res) => {
+  app.get("/api/news", async (req, res) => {
     const { q, category } = req.query;
+    if (!hasHydratedRealNews) {
+      await refreshNews(typeof category === "string" ? category : "全部");
+    }
     let filtered = [...newsItems];
 
     if (category && category !== '全部') {
@@ -260,49 +300,17 @@ async function startServer() {
   });
 
   app.post("/api/news/crawl", async (req, res) => {
-    // In a real app, this would trigger the Python crawler.
-    // Here we simulate adding 20 new items.
-    const topics = [
-      { t: "全球变暖对北极熊栖息地的影响", c: "气候变化" },
-      { t: "新型空气净化技术在工业区的应用", c: "空气质量" },
-      { t: "城市化进程与传染病传播的相关性", c: "流行病学" },
-      { t: "欧盟新颁布的碳排放交易准则解读", c: "政策解读" },
-      { t: "深层地下水重金属污染治理方案", c: "饮用水" },
-      { t: "极端天气事件对农业产量的长期威胁", c: "气候变化" },
-      { t: "室内甲醛暴露对儿童呼吸系统的损害", c: "空气质量" },
-      { t: "微塑料在海洋生物链中的富集效应", c: "流行病学" },
-      { t: "中国“双碳”目标下的能源结构转型", c: "政策解读" },
-      { t: "海水淡化技术在干旱地区的经济性分析", c: "饮用水" },
-      { t: "森林火灾频发与全球碳循环失衡", c: "气候变化" },
-      { t: "交通尾气排放对城市居民寿命的影响", c: "空气质量" },
-      { t: "抗生素耐药性基因在水环境中的传播", c: "流行病学" },
-      { t: "绿色建筑认证标准对节能减排的贡献", c: "政策解读" },
-      { t: "农村地区饮用水安全现状与提升策略", c: "饮用水" },
-      { t: "冰川融化导致的海平面上升预测模型", c: "气候变化" },
-      { t: "臭氧层空洞修复现状与未来展望", c: "空气质量" },
-      { t: "电子垃圾回收过程中的职业健康风险", c: "流行病学" },
-      { t: "可再生能源补贴政策的国际比较研究", c: "政策解读" },
-      { t: "智能水表在节约城市用水中的作用", c: "饮用水" }
-    ];
-
-    const newItems = topics.map((topic, index) => ({
-      id: (Date.now() + index).toString(),
-      title: topic.t,
-      oneSentenceSummary: `这是一篇关于${topic.t}的最新研究摘要。`,
-      conceptImageUrl: `https://picsum.photos/seed/${index + 100}/800/450`,
-      plainTextContent: `详细研究显示，${topic.t}是一个复杂且紧迫的问题。科学家们正在通过多维度的数据分析来寻找解决方案。`,
-      abstract: `Abstract for ${topic.t}: This study explores the various factors influencing the current state of ${topic.t}. We utilized a comprehensive dataset spanning the last decade to identify key trends and correlations.`,
-      translatedAbstract: `摘要：本研究探讨了影响${topic.t}现状的各种因素。我们利用了过去十年的综合数据集来识别关键趋势和相关性。结果表明，采取积极的干预措施对于缓解负面影响至关重要。`,
-      sourceLink: `https://scholar.google.com/scholar?q=${encodeURIComponent(topic.t)}`,
-      sourceJournal: index % 2 === 0 ? "Nature" : "Science",
-      publishDate: new Date().toISOString().split('T')[0],
-      category: topic.c,
-      likes: Math.floor(Math.random() * 50),
-      comments: []
-    }));
-
-    newsItems = [...newItems, ...newsItems];
-    res.json(newItems);
+    const category = typeof req.body?.category === "string" ? req.body.category : "全部";
+    try {
+      const newItems = await fetchRealNews(category, category === "全部" ? 10 : 6);
+      if (newItems.length > 0) {
+        newsItems = mergeNewsItems(newsItems, newItems);
+        hasHydratedRealNews = true;
+      }
+      res.json(newItems);
+    } catch (error: any) {
+      res.status(502).json({ error: error.message || "Real paper crawl failed." });
+    }
   });
 
   // Sample Data Generation

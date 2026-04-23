@@ -23,6 +23,9 @@ import {
   MessageSquare,
   Send,
   BarChart2,
+  Bot,
+  Sparkles,
+  Copy,
   X
 } from 'lucide-react';
 import {
@@ -45,8 +48,20 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { AnalysisResult, AnalysisMode, NewsItem, Comment, AnalyticsEvent } from './types';
-import { getAIAnalysisStream, getWhatIfAnalysis } from './services/claudeService';
+import {
+  AnalysisResult,
+  AnalysisMode,
+  NewsItem,
+  Comment,
+  AnalyticsEvent,
+  ComplianceGuidance,
+  ComplianceReview,
+  DiscussionMessage,
+  GeneratedReport,
+  PaperDraft,
+  AuditLogEntry,
+} from './types';
+import { discussWithAI, getAIAnalysisStream, getWhatIfAnalysis } from './services/aiService';
 import {
   getStoredUser,
   setStoredUser,
@@ -61,6 +76,14 @@ import {
   trackEvent,
   getAnalytics,
 } from './services/localDataService';
+import {
+  analyzeDataset,
+  fetchSampleDataset,
+  fetchAuditTrail,
+  generatePaperDraft,
+  generateReport,
+  reviewDataset,
+} from './services/workbenchService';
 import type { User as UserType } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -69,6 +92,14 @@ import html2canvas from 'html2canvas';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const NEWS_CATEGORIES = ["空气质量", "气候变化", "流行病学", "政策解读", "饮用水"];
+const SAMPLE_DATASETS = [
+  { id: 'regression', title: '连续型回归', description: 'PM2.5 与疾病率的线性关系，适合看回归、What-If 和论文初稿。' },
+  { id: 'classification', title: '二分类风险', description: '生物标志物 + 风险标签，适合预览分类模型对比与推荐。' },
+  { id: 'time-series', title: '时间序列趋势', description: '按日期追踪污染与门诊量，适合预览趋势建模与时序对比。' },
+  { id: 'privacy-risk', title: '高风险样本', description: '包含姓名、邮箱和摘要列，可直接预览合规拦截与 AI 脱敏方案。' },
+] as const;
 
 export default function App() {
   const [user, setUser] = useState<UserType | null>(null);
@@ -83,7 +114,19 @@ export default function App() {
   const [whatIfResponse, setWhatIfResponse] = useState<string>('');
   const [whatIfLoading, setWhatIfLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [complianceReview, setComplianceReview] = useState<ComplianceReview | null>(null);
+  const [complianceGuidance, setComplianceGuidance] = useState<ComplianceGuidance | null>(null);
+  const [report, setReport] = useState<GeneratedReport | null>(null);
+  const [paperDraft, setPaperDraft] = useState<PaperDraft | null>(null);
+  const [auditTrail, setAuditTrail] = useState<AuditLogEntry[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [paperLoading, setPaperLoading] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [discussionOpen, setDiscussionOpen] = useState(false);
+  const [discussionInput, setDiscussionInput] = useState('');
+  const [discussionMessages, setDiscussionMessages] = useState<DiscussionMessage[]>([]);
+  const [discussionLoading, setDiscussionLoading] = useState(false);
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [userInterests, setUserInterests] = useState<Record<string, number>>({});
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
@@ -118,7 +161,39 @@ export default function App() {
     if (result) {
       triggerAIAnalysis(result, mode);
     }
-  }, [mode]);
+  }, [result, mode]);
+
+  useEffect(() => {
+    setSelectedModelId(result?.modelComparison?.bestModelId || null);
+  }, [result?.modelComparison?.bestModelId]);
+
+  useEffect(() => {
+    const intro =
+      view === 'workbench'
+        ? '可以问我：这个数据更适合什么模型？隐私/版权风险如何处理？报告怎么变成论文？'
+        : view === 'analytics'
+          ? '可以问我：用户都在看什么？哪些功能最常被点击？'
+          : '可以问我：这条资讯是否适合导入科研工作台？如何继续深度分析？';
+    setDiscussionMessages([
+      {
+        id: `assistant_intro_${view}`,
+        role: 'assistant',
+        content: `你好，我是 EnvInsight AI 助手。${intro}`,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+  }, [view]);
+
+  useEffect(() => {
+    if (!result?.trace?.datasetId) {
+      setAuditTrail(result?.trace?.auditTrail || []);
+      return;
+    }
+
+    fetchAuditTrail(result.trace.datasetId)
+      .then(({ logs }) => setAuditTrail(logs))
+      .catch(() => setAuditTrail(result.trace?.auditTrail || []));
+  }, [result?.trace?.datasetId]);
 
   const loadNews = async (queryStr?: string) => {
     setNewsLoading(true);
@@ -141,6 +216,44 @@ export default function App() {
       setError('获取资讯失败，请检查网络连接。');
     } finally {
       setNewsLoading(false);
+    }
+  };
+
+  const resetWorkbenchOutputs = () => {
+    setResult(null);
+    setAiResponse('');
+    setWhatIfResponse('');
+    setReport(null);
+    setPaperDraft(null);
+    setComplianceGuidance(null);
+    setAuditTrail([]);
+    setSelectedModelId(null);
+  };
+
+  const runWorkbenchAnalysis = async (uploadedFile: File) => {
+    setError(null);
+    setFile(uploadedFile);
+    resetWorkbenchOutputs();
+    setLoading(true);
+
+    try {
+      const compliance = await reviewDataset(uploadedFile);
+      setComplianceReview(compliance.review);
+      setComplianceGuidance(compliance.guidance || null);
+
+      if (compliance.review.status === 'blocked') {
+        setError('检测到高风险字段，当前数据需先脱敏后才能进入分析。');
+        return;
+      }
+
+      const analysisResult = await analyzeDataset(uploadedFile);
+      setResult(analysisResult);
+      setComplianceReview(analysisResult.complianceReview || compliance.review);
+      setComplianceGuidance(analysisResult.complianceGuidance || compliance.guidance || null);
+    } catch (err: any) {
+      setError(err.message || '数据处理失败');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -188,26 +301,24 @@ export default function App() {
     trackEvent('click', 'upload_file_button');
     const uploadedFile = e.target.files?.[0];
     if (!uploadedFile) return;
-    setFile(uploadedFile);
+    await runWorkbenchAnalysis(uploadedFile);
+  };
+
+  const handleLoadSampleDataset = async (type: (typeof SAMPLE_DATASETS)[number]['id']) => {
+    trackEvent('click', 'load_sample_dataset', { type });
     setError(null);
-
-    const formData = new FormData();
-    formData.append('file', uploadedFile);
-
-    setLoading(true);
     try {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
-      setResult(data);
-      triggerAIAnalysis(data, mode);
+      const sampleRows = await fetchSampleDataset(type);
+      const headers = Object.keys(sampleRows[0] || {});
+      const csvContent = [
+        headers.join(','),
+        ...sampleRows.map((row) => headers.map((header) => JSON.stringify(row[header] ?? '')).join(',')),
+      ].join('\n');
+      const csvBlob = new Blob([csvContent], { type: 'text/csv' });
+      const csvFile = new File([csvBlob], `${type}.csv`, { type: 'text/csv' });
+      await runWorkbenchAnalysis(csvFile);
     } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      setError(err.message || '示例数据加载失败');
     }
   };
 
@@ -220,6 +331,7 @@ export default function App() {
         data.summary,
         data.data,
         currentMode,
+        data.columns,
         (chunk) => {
           if (firstChunk) {
             setAiLoading(false);
@@ -235,6 +347,79 @@ export default function App() {
     }
   };
 
+  const handleDiscussSubmit = async () => {
+    if (!discussionInput.trim() || discussionLoading) return;
+
+    const userMessage: DiscussionMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: discussionInput.trim(),
+      timestamp: new Date().toISOString(),
+    };
+    setDiscussionMessages((prev) => [...prev, userMessage]);
+    setDiscussionInput('');
+    setDiscussionLoading(true);
+
+    try {
+      const response = await discussWithAI(view, userMessage.content, result);
+      setDiscussionMessages((prev) => [...prev, response.message]);
+    } catch (err: any) {
+      setDiscussionMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: err.message || 'AI 讨论暂时不可用，请稍后再试。',
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setDiscussionLoading(false);
+    }
+  };
+
+  const exportPaperMarkdown = async () => {
+    if (!paperDraft) return;
+    const markdown = [
+      `# ${paperDraft.title}`,
+      '',
+      `> ${paperDraft.disclaimer}`,
+      '',
+      '## Abstract',
+      paperDraft.abstract,
+      '',
+      '## Introduction',
+      paperDraft.introduction,
+      '',
+      '## Methods',
+      paperDraft.methods,
+      '',
+      '## Results',
+      paperDraft.results,
+      '',
+      '## Discussion',
+      paperDraft.discussion,
+      '',
+      '## Limitations',
+      paperDraft.limitations,
+      '',
+      '## Evidence Map',
+      ...paperDraft.evidenceMap.map((item) => `- ${item.label}: ${item.value} (${item.source})`),
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(markdown);
+    } catch {
+      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${paperDraft.title.replace(/\s+/g, '_') || 'paper_draft'}.md`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   const handleWhatIf = async () => {
     if (!result) return;
     trackEvent('click', 'run_simulation_button', { pm25Delta });
@@ -243,13 +428,42 @@ export default function App() {
       const predictedChange = result.summary.coefficients.pm25 * (pm25Delta / 100 * result.data[0].x);
       const response = await getWhatIfAnalysis(
         { pm25Change: pm25Delta, predictedDiseaseChange: predictedChange },
-        result.summary.coefficients.pm25
+        result.summary.coefficients.pm25,
+        result.columns.x
       );
       setWhatIfResponse(response);
     } catch (err) {
       setWhatIfResponse('模拟分析失败。');
     } finally {
       setWhatIfLoading(false);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    if (!result) return;
+    trackEvent('click', 'generate_report_button');
+    setReportLoading(true);
+    try {
+      const { report: nextReport } = await generateReport(result, aiResponse);
+      setReport(nextReport);
+    } catch (err: any) {
+      setError(err.message || '报告生成失败');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const handleGeneratePaperDraft = async () => {
+    if (!result) return;
+    trackEvent('click', 'generate_paper_draft_button');
+    setPaperLoading(true);
+    try {
+      const { paperDraft: nextPaperDraft } = await generatePaperDraft(result, aiResponse);
+      setPaperDraft(nextPaperDraft);
+    } catch (err: any) {
+      setError(err.message || '论文初稿生成失败');
+    } finally {
+      setPaperLoading(false);
     }
   };
 
@@ -306,6 +520,8 @@ export default function App() {
       setPdfLoading(false);
     }
   };
+
+  const selectedModel = result?.modelComparison?.runs.find((run) => run.id === selectedModelId) || result?.modelComparison?.runs[0] || null;
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#1A1A1A] font-sans">
@@ -487,7 +703,7 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
-                  {['全部', ...(user ? ['为你推荐'] : []), '空气质量', '气候变化', '流行病学', '政策解读'].map(cat => (
+                  {['全部', ...(user ? ['为你推荐'] : []), ...NEWS_CATEGORIES].map(cat => (
                     <button
                       key={cat}
                       onClick={() => {
@@ -590,36 +806,24 @@ export default function App() {
                 <p className="text-sm font-medium text-gray-900">
                   {file ? file.name : "点击或拖拽上传 CSV 文件"}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">支持 PM2.5 与 疾病率 相关数据</p>
+                <p className="text-xs text-gray-500 mt-1">支持连续型、二分类、时间序列等多种 CSV 数据结构</p>
               </div>
 
-              <button
-                onClick={async () => {
-                  trackEvent('click', 'use_sample_data_button');
-                  setLoading(true);
-                  try {
-                    const res = await fetch('/api/sample-data');
-                    const sampleData = await res.json();
-                    const csvContent = "pm25,disease_rate\n" + sampleData.map((d: any) => `${d.pm25},${d.disease_rate}`).join("\n");
-                    const csvBlob = new Blob([csvContent], { type: 'text/csv' });
-                    const csvFile = new File([csvBlob], 'sample_data.csv', { type: 'text/csv' });
-                    const uploadFormData = new FormData();
-                    uploadFormData.append('file', csvFile);
-                    const analyzeRes = await fetch('/api/analyze', { method: 'POST', body: uploadFormData });
-                    const resultData = await analyzeRes.json();
-                    setResult(resultData);
-                    setFile(csvFile);
-                    triggerAIAnalysis(resultData, mode);
-                  } catch (err: any) {
-                    setError(err.message);
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                className="w-full mt-4 text-xs text-emerald-600 font-bold uppercase tracking-widest hover:text-emerald-700 transition-colors py-2 border border-emerald-100 rounded-lg bg-emerald-50/50"
-              >
-                使用示例数据进行演示
-              </button>
+              <div className="mt-4 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">一键预览完整功能板块</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {SAMPLE_DATASETS.map((dataset) => (
+                    <button
+                      key={dataset.id}
+                      onClick={() => handleLoadSampleDataset(dataset.id)}
+                      className="text-left rounded-xl border border-gray-200 bg-gray-50 hover:bg-white hover:border-emerald-200 transition-all px-4 py-3"
+                    >
+                      <p className="text-sm font-semibold text-gray-900">{dataset.title}</p>
+                      <p className="text-xs text-gray-500 mt-1 leading-relaxed">{dataset.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {error && (
                 <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-3">
@@ -631,8 +835,81 @@ export default function App() {
               {loading && (
                 <div className="mt-4 flex items-center justify-center gap-2 text-emerald-600 text-sm font-medium">
                   <RefreshCw className="animate-spin" size={16} />
-                  正在进行 OLS 回归分析...
+                  正在进行数据体检、模型对比与分析生成...
                 </div>
+              )}
+            </section>
+
+            <section className={cn(
+              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              !complianceReview && "opacity-70"
+            )}>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <ShieldAlert size={20} className="text-emerald-600" />
+                合规预审与审计
+              </h2>
+              {complianceReview ? (
+                <div className="space-y-4">
+                  <div className={cn(
+                    "rounded-xl border px-4 py-3",
+                    complianceReview.status === 'blocked'
+                      ? "bg-red-50 border-red-200"
+                      : complianceReview.status === 'warning'
+                        ? "bg-amber-50 border-amber-200"
+                        : "bg-emerald-50 border-emerald-200"
+                  )}>
+                    <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">审查结论</p>
+                    <p className="text-sm font-semibold text-gray-900">{complianceReview.summary}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">风险发现</p>
+                    <div className="space-y-2">
+                      {complianceReview.findings.length > 0 ? complianceReview.findings.map((finding, index) => (
+                        <div key={`${finding.field}-${index}`} className="rounded-lg border border-gray-200 px-3 py-2">
+                          <p className="text-sm font-medium text-gray-900">{finding.field}</p>
+                          <p className="text-xs text-gray-500 mt-1">{finding.reason}</p>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-gray-500">当前未检测到高风险身份字段。</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">处理建议</p>
+                    <ul className="space-y-2 text-sm text-gray-600">
+                      {complianceReview.suggestions.map((suggestion) => (
+                        <li key={suggestion} className="rounded-lg bg-gray-50 px-3 py-2 border border-gray-100">
+                          {suggestion}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">上传数据后，系统会先执行字段级风险审查并留下审计轨迹。</p>
+              )}
+            </section>
+
+            <section className={cn(
+              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              !complianceGuidance && "opacity-70"
+            )}>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Info size={20} className="text-emerald-600" />
+                AI 合规解决方案
+              </h2>
+              {complianceGuidance ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                    <p className="text-sm text-emerald-900 leading-relaxed">{complianceGuidance.summary}</p>
+                  </div>
+                  <KeyValueList title="数据脱敏方案" items={complianceGuidance.desensitizationPlan} />
+                  <KeyValueList title="AI 审查工作流" items={complianceGuidance.reviewWorkflow} />
+                  <KeyValueList title="版权核查清单" items={complianceGuidance.copyrightChecklist} />
+                  <KeyValueList title="发布前守则" items={complianceGuidance.publishGuardrails} />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">完成预审后，AI 会自动生成数据脱敏、版权核查和发布前审查工作流。</p>
               )}
             </section>
 
@@ -647,7 +924,7 @@ export default function App() {
               <div className="space-y-6">
                 <div>
                   <div className="flex justify-between mb-2">
-                    <label className="text-sm font-medium text-gray-700">环境变量 (PM2.5) 调整</label>
+                    <label className="text-sm font-medium text-gray-700">核心自变量 ({result?.columns.x || '待分析'}) 调整</label>
                     <span className={cn(
                       "text-sm font-bold",
                       pm25Delta > 0 ? "text-red-600" : pm25Delta < 0 ? "text-emerald-600" : "text-gray-500"
@@ -672,12 +949,18 @@ export default function App() {
 
                 <button
                   onClick={handleWhatIf}
-                  disabled={whatIfLoading}
+                  disabled={whatIfLoading || result?.modelComparison?.datasetShape !== 'regression'}
                   className="w-full bg-gray-900 hover:bg-black text-white py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
                 >
                   {whatIfLoading ? <RefreshCw className="animate-spin" size={16} /> : <Search size={16} />}
                   运行模拟预测
                 </button>
+
+                {result?.modelComparison?.datasetShape !== 'regression' && (
+                  <p className="text-xs text-gray-500">
+                    当前数据推荐的默认路线不是回归分析，What-If 预测仅在回归型数据上启用。
+                  </p>
+                )}
 
                 {whatIfResponse && (
                   <motion.div
@@ -690,6 +973,37 @@ export default function App() {
                     </p>
                   </motion.div>
                 )}
+              </div>
+            </section>
+
+            <section className={cn(
+              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              !result && "opacity-50 pointer-events-none"
+            )}>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <FileText size={20} className="text-emerald-600" />
+                报告与论文初稿
+              </h2>
+              <div className="space-y-3">
+                <button
+                  onClick={handleGenerateReport}
+                  disabled={reportLoading}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+                >
+                  {reportLoading ? <RefreshCw className="animate-spin" size={16} /> : <FileText size={16} />}
+                  {reportLoading ? '正在生成报告...' : '生成结构化报告'}
+                </button>
+                <button
+                  onClick={handleGeneratePaperDraft}
+                  disabled={paperLoading}
+                  className="w-full bg-gray-900 hover:bg-black text-white py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+                >
+                  {paperLoading ? <RefreshCw className="animate-spin" size={16} /> : <ChevronRight size={16} />}
+                  {paperLoading ? '正在生成初稿...' : '生成论文初稿'}
+                </button>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  输出将附带证据链、局限说明与免责声明，适合用于科研讨论和初稿整理。
+                </p>
               </div>
             </section>
           </div>
@@ -710,15 +1024,19 @@ export default function App() {
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">P-Value (显著性)</p>
                 <p className={cn(
                   "text-2xl font-bold",
-                  result && result.summary.pValue < 0.05 ? "text-emerald-600" : "text-gray-900"
+                  result && result.summary.pValue != null && result.summary.pValue < 0.05 ? "text-emerald-600" : "text-gray-900"
                 )}>
-                  {result ? result.summary.pValue.toFixed(3) : '--'}
+                  {result ? (result.summary.pValue == null ? 'N/A' : result.summary.pValue.toFixed(3)) : '--'}
                 </p>
                 <div className="mt-2 flex items-center gap-1 text-[10px] font-medium">
-                  {result && result.summary.pValue < 0.05 ? (
-                    <span className="text-emerald-600 flex items-center gap-1"><TrendingDown size={10} /> 统计学显著</span>
+                  {result && result.summary.pValue != null ? (
+                    result.summary.pValue < 0.05 ? (
+                    <span className="text-emerald-600 flex items-center gap-1"><TrendingDown size={10} /> 基于 t 检验，统计学显著</span>
                   ) : (
-                    <span className="text-gray-400 flex items-center gap-1"><TrendingUp size={10} /> 统计学不显著</span>
+                    <span className="text-gray-400 flex items-center gap-1"><TrendingUp size={10} /> 基于 t 检验，统计学不显著</span>
+                  )
+                  ) : (
+                    <span className="text-gray-400 flex items-center gap-1"><Info size={10} /> 样本不足，暂不显示显著性</span>
                   )}
                 </div>
               </div>
@@ -728,7 +1046,7 @@ export default function App() {
                   {result ? result.summary.coefficients.pm25.toFixed(4) : '--'}
                 </p>
                 <div className="mt-2 flex items-center gap-1 text-[10px] font-medium text-gray-500">
-                  每单位 PM2.5 变化对疾病率的影响
+                  每单位 {result?.columns.x || '自变量'} 变化对 {result?.columns.y || '目标变量'} 的影响
                 </div>
               </div>
             </div>
@@ -755,8 +1073,8 @@ export default function App() {
                   <ResponsiveContainer width="100%" height="100%">
                     <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F3F5" />
-                      <XAxis type="number" dataKey="x" name="PM2.5" unit=" μg/m³" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#868E96' }} />
-                      <YAxis type="number" dataKey="y" name="疾病率" unit="%" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#868E96' }} />
+                      <XAxis type="number" dataKey="x" name={result.columns.x} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#868E96' }} />
+                      <YAxis type="number" dataKey="y" name={result.columns.y} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#868E96' }} />
                       <ZAxis type="number" range={[60, 60]} />
                       <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                       <Scatter name="数据点" data={result.data} fill="#10B981" fillOpacity={0.4} stroke="#059669" />
@@ -772,6 +1090,157 @@ export default function App() {
               </div>
             </section>
 
+            <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Info size={20} className="text-emerald-600" />
+                  数据体检与多模型对比
+                </h2>
+                <span className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                  {result?.profile?.datasetShape || '待分析'}
+                </span>
+              </div>
+              {result?.profile ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">质量评分</p>
+                      <p className="text-2xl font-bold text-gray-900">{result.profile.qualityScore}</p>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">数据规模</p>
+                      <p className="text-2xl font-bold text-gray-900">{result.profile.rowCount} / {result.profile.columnCount}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">行 / 列</p>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">缺失单元</p>
+                      <p className="text-2xl font-bold text-gray-900">{result.profile.missingCells}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">主要问题</p>
+                    <div className="space-y-2">
+                      {result.profile.issues.length > 0 ? result.profile.issues.map((issue) => (
+                        <div key={issue} className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
+                          {issue}
+                        </div>
+                      )) : (
+                        <p className="text-sm text-gray-500">当前未发现明显的数据质量阻断项。</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">候选模型</p>
+                    {result.modelComparison && (
+                      <div className="space-y-4 mb-4">
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-1">自动推荐</p>
+                              <p className="text-lg font-bold text-gray-900">{result.modelComparison.bestModelName}</p>
+                              <p className="text-sm text-gray-600 mt-1">{result.modelComparison.whyRecommended}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-gray-500">目标变量</p>
+                              <p className="text-sm font-semibold text-gray-900">{result.modelComparison.selectedTarget || '未指定'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-sm font-semibold text-gray-900">模型评分视图</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">点击卡片切换结果说明</p>
+                          </div>
+                          <div className="h-56">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={result.modelComparison.runs}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+                                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                                <Bar dataKey="score" radius={[6, 6, 0, 0]} fill="#10b981" />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {(result.modelComparison?.runs || result.profile.recommendedModels).map((model: any) => (
+                        <button
+                          key={model.id}
+                          onClick={() => result.modelComparison && setSelectedModelId(model.id)}
+                          className={cn(
+                            "rounded-2xl border p-4 text-left transition-all",
+                            result.modelComparison && selectedModelId === model.id
+                              ? "border-emerald-400 bg-emerald-50/60 shadow-sm"
+                              : "border-gray-200 hover:border-emerald-200"
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-gray-900">{model.name}</p>
+                            <span className="text-xs font-bold text-emerald-600">
+                              {result.modelComparison ? `Score ${model.score}` : `Fit ${model.fitScore}`}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-2">{result.modelComparison ? model.summary : model.reason}</p>
+                          {result.modelComparison && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {Object.entries(model.metrics).slice(0, 3).map(([key, value]) => (
+                                <span key={key} className="px-2 py-1 rounded-full bg-gray-100 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                                  {key}: {String(value)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {result.modelComparison && (
+                            <p className="text-xs text-gray-500 mt-3">{model.rationale}</p>
+                          )}
+                          <ul className="mt-3 space-y-1 text-xs text-gray-500">
+                            {model.limitations.map((item: string) => (
+                              <li key={item}>- {item}</li>
+                            ))}
+                          </ul>
+                        </button>
+                      ))}
+                    </div>
+                    {selectedModel && (
+                      <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">当前查看</p>
+                            <p className="text-lg font-bold text-gray-900 mt-1">{selectedModel.name}</p>
+                          </div>
+                          <span className="px-3 py-1 rounded-full bg-white border border-gray-200 text-xs font-bold text-emerald-600">
+                            {selectedModel.family}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mt-3">{selectedModel.summary}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {Object.entries(selectedModel.metrics).map(([key, value]) => (
+                            <span key={key} className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                              {key}: {String(value)}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-3">{selectedModel.rationale}</p>
+                        <ul className="mt-3 space-y-1 text-xs text-gray-500">
+                          {selectedModel.limitations.map((item) => (
+                            <li key={item}>- {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">分析完成后，这里会展示数据体检结果、多模型对比和最优模型推荐。</p>
+              )}
+            </section>
+
             <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -779,7 +1248,7 @@ export default function App() {
                   AI 智能解读
                 </h2>
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700">
-                  Powered by Claude
+                  OpenAI
                 </span>
               </div>
 
@@ -851,6 +1320,106 @@ export default function App() {
                 </p>
               </div>
             </section>
+
+            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <FileText size={20} className="text-emerald-600" />
+                  结构化报告
+                </h2>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Traceable</span>
+              </div>
+              <div className="p-6">
+                {report ? (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">{report.title}</h3>
+                      <p className="text-sm text-gray-600 mt-2">{report.executiveSummary}</p>
+                    </div>
+                    <KeyValueList title="关键发现" items={report.keyFindings} />
+                    <KeyValueList title="局限说明" items={report.limitations} />
+                    <KeyValueList title="下一步建议" items={report.nextSteps} />
+                    <EvidenceList items={report.evidence} />
+                    <p className="text-xs text-gray-500 border-t border-gray-100 pt-4">{report.disclaimer}</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">点击左侧“生成结构化报告”后，这里会展示摘要、局限说明和证据链。</p>
+                )}
+              </div>
+            </section>
+
+            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <ChevronRight size={20} className="text-emerald-600" />
+                  论文初稿
+                </h2>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">IMRaD</span>
+              </div>
+              <div className="p-6">
+                {paperDraft ? (
+                  <div className="space-y-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                      <h3 className="text-xl font-bold text-gray-900">{paperDraft.title}</h3>
+                      <p className="text-xs text-gray-500 mt-2">{paperDraft.disclaimer}</p>
+                      </div>
+                      <button
+                        onClick={exportPaperMarkdown}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-bold text-gray-600 hover:border-emerald-200 hover:text-emerald-700 transition-all"
+                      >
+                        <Copy size={14} />
+                        复制 Markdown
+                      </button>
+                    </div>
+                    <DraftSection title="Abstract" content={paperDraft.abstract} />
+                    <DraftSection title="Introduction" content={paperDraft.introduction} />
+                    <DraftSection title="Methods" content={paperDraft.methods} />
+                    <DraftSection title="Results" content={paperDraft.results} />
+                    <DraftSection title="Discussion" content={paperDraft.discussion} />
+                    <DraftSection title="Limitations" content={paperDraft.limitations} />
+                    <EvidenceList items={paperDraft.evidenceMap} />
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">点击左侧“生成论文初稿”后，这里会生成结构化的 IMRaD 草稿和证据映射。</p>
+                )}
+              </div>
+            </section>
+
+            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <BarChart2 size={20} className="text-emerald-600" />
+                  审计轨迹
+                </h2>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                  {result?.trace?.datasetId || 'No dataset'}
+                </span>
+              </div>
+              <div className="p-6">
+                {auditTrail.length > 0 ? (
+                  <div className="space-y-3">
+                    {auditTrail.map((item) => (
+                      <div key={item.id} className="rounded-xl border border-gray-200 px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-gray-900">{item.action}</p>
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase tracking-widest",
+                            item.status === 'success' ? "text-emerald-600" : item.status === 'warning' ? "text-amber-600" : "text-red-600"
+                          )}>
+                            {item.status}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">{item.summary}</p>
+                        <p className="text-[10px] text-gray-400 mt-2">{item.timestamp}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">关键链路执行后，这里会展示审计日志与留痕信息。</p>
+                )}
+              </div>
+            </section>
           </div>
         </main>
       )}
@@ -869,6 +1438,88 @@ export default function App() {
           <p className="text-xs text-gray-400">&copy; 2026 EnvInsight AI. All rights reserved.</p>
         </div>
       </footer>
+
+      <div className="fixed right-6 bottom-6 z-[90] flex flex-col items-end gap-3">
+        <AnimatePresence>
+          {discussionOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.98 }}
+              className="w-[min(92vw,420px)] h-[min(70vh,620px)] bg-white border border-gray-200 rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                    <Bot size={18} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">与 AI 讨论</p>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-widest">{view}</p>
+                  </div>
+                </div>
+                <button onClick={() => setDiscussionOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#FAFBFB]">
+                {discussionMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      "rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap max-w-[92%]",
+                      message.role === 'assistant'
+                        ? "bg-white border border-gray-200 text-gray-700"
+                        : "ml-auto bg-gray-900 text-white"
+                    )}
+                  >
+                    {message.content}
+                  </div>
+                ))}
+                {discussionLoading && (
+                  <div className="rounded-2xl px-4 py-3 text-sm bg-white border border-gray-200 text-gray-500 w-fit">
+                    EnvInsight AI 正在整理建议...
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-gray-200 bg-white">
+                <div className="flex items-end gap-3">
+                  <textarea
+                    value={discussionInput}
+                    onChange={(e) => setDiscussionInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleDiscussSubmit();
+                      }
+                    }}
+                    rows={3}
+                    placeholder="例如：这个数据该怎么脱敏？为什么推荐这个模型？论文结果段还能怎么写？"
+                    className="flex-1 resize-none rounded-2xl border border-gray-200 px-4 py-3 text-sm focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
+                  />
+                  <button
+                    onClick={handleDiscussSubmit}
+                    disabled={discussionLoading || !discussionInput.trim()}
+                    className="shrink-0 h-12 w-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white flex items-center justify-center transition-all"
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <button
+          onClick={() => setDiscussionOpen((prev) => !prev)}
+          className="inline-flex items-center gap-2 bg-gray-900 hover:bg-black text-white px-5 py-3 rounded-full shadow-lg"
+        >
+          <Sparkles size={16} />
+          与 AI 讨论
+        </button>
+      </div>
 
       <AnimatePresence>
         {showDisclaimer && (
@@ -907,6 +1558,51 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function KeyValueList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div>
+      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">{title}</h4>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item} className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceList({ items }: { items: { label: string; value: string; source: string }[] }) {
+  return (
+    <div>
+      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">证据链</h4>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={`${item.label}-${item.source}`} className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-gray-900">{item.label}</p>
+              <span className="text-xs font-bold text-emerald-600">{item.value}</span>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2">{item.source}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DraftSection({ title, content }: { title: string; content: string }) {
+  return (
+    <div>
+      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">{title}</h4>
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+        {content}
+      </div>
     </div>
   );
 }
@@ -1285,7 +1981,7 @@ function NewsDetail({ item, onBack, user, onLogin }: { item: NewsItem; onBack: (
             <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold">AI</div>
             <div>
               <p className="text-sm font-bold text-gray-900">EnvInsight AI 科学记者</p>
-              <p className="text-xs text-gray-500">基于 Claude AI 模型生成</p>
+              <p className="text-xs text-gray-500">基于 OpenAI 模型生成</p>
             </div>
           </div>
           <div className="flex items-center gap-4 flex-wrap">

@@ -4,7 +4,8 @@ export interface StatsSummary {
     pm25: number;
   };
   rSquared: number;
-  pValue: number;
+  pValue: number | null;
+  pValueMethod: "student-t" | "unavailable";
   n: number;
 }
 
@@ -14,6 +15,136 @@ export interface DataPoint {
 }
 
 export type AnalysisMode = 'researcher' | 'public';
+export type ComplianceSeverity = "low" | "medium" | "high";
+export type ComplianceStatus = "passed" | "warning" | "blocked";
+export type ProfileColumnType = "numeric" | "binary" | "categorical" | "datetime" | "text" | "unknown";
+
+export interface ComplianceFinding {
+  field: string;
+  reason: string;
+  severity: ComplianceSeverity;
+  evidence?: string;
+}
+
+export interface ComplianceReview {
+  status: ComplianceStatus;
+  riskLevel: ComplianceSeverity;
+  findings: ComplianceFinding[];
+  suggestions: string[];
+  summary: string;
+}
+
+export interface ComplianceGuidance {
+  provider: "openai" | "local-fallback";
+  summary: string;
+  desensitizationPlan: string[];
+  reviewWorkflow: string[];
+  copyrightChecklist: string[];
+  publishGuardrails: string[];
+}
+
+export interface ProfileColumn {
+  name: string;
+  type: ProfileColumnType;
+  missingRate: number;
+  uniqueCount: number;
+  sampleValues: string[];
+  notes: string[];
+}
+
+export interface ModelRecommendation {
+  id: string;
+  name: string;
+  fitScore: number;
+  reason: string;
+  limitations: string[];
+}
+
+export interface ModelRunResult {
+  id: string;
+  name: string;
+  family: "regression" | "classification" | "time-series" | "eda";
+  score: number;
+  summary: string;
+  metrics: Record<string, number | string>;
+  rationale: string;
+  limitations: string[];
+}
+
+export interface ModelComparison {
+  datasetShape: "regression" | "classification" | "time-series" | "mixed";
+  selectedTarget?: string;
+  selectedFeatures: string[];
+  bestModelId: string;
+  bestModelName: string;
+  whyRecommended: string;
+  runs: ModelRunResult[];
+}
+
+export interface DataProfile {
+  rowCount: number;
+  columnCount: number;
+  datasetShape: "regression" | "classification" | "time-series" | "mixed";
+  missingCells: number;
+  qualityScore: number;
+  issues: string[];
+  columns: ProfileColumn[];
+  recommendedModels: ModelRecommendation[];
+}
+
+export interface EvidenceItem {
+  label: string;
+  value: string;
+  source: string;
+}
+
+export interface GeneratedReport {
+  title: string;
+  executiveSummary: string;
+  keyFindings: string[];
+  limitations: string[];
+  nextSteps: string[];
+  evidence: EvidenceItem[];
+  disclaimer: string;
+}
+
+export interface PaperDraft {
+  title: string;
+  abstract: string;
+  introduction: string;
+  methods: string;
+  results: string;
+  discussion: string;
+  limitations: string;
+  evidenceMap: EvidenceItem[];
+  disclaimer: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  action: string;
+  status: "success" | "warning" | "blocked";
+  datasetId?: string;
+  summary: string;
+}
+
+export interface AnalysisTrace {
+  datasetId: string;
+  auditTrail: AuditLogEntry[];
+}
+
+export interface DiscussionMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
+export interface DiscussionResponse {
+  provider: "openai" | "local-fallback";
+  message: DiscussionMessage;
+}
 
 export interface Comment {
   id: string;
@@ -52,6 +183,11 @@ export interface AnalysisResult {
     x: string;
     y: string;
   };
+  complianceReview?: ComplianceReview;
+  complianceGuidance?: ComplianceGuidance;
+  profile?: DataProfile;
+  modelComparison?: ModelComparison;
+  trace?: AnalysisTrace;
 }
 
 export interface User {

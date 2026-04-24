@@ -100,7 +100,7 @@ import {
   reviewDataset,
 } from './services/workbenchService';
 import { buildImportedResearchLead, buildWorkbenchFeedbackBrief, buildWorkbenchNewsPublishReview } from './shared/researchBridge';
-import { WORKBENCH_PRIORITY_NOTES, WORKBENCH_SECTIONS, type WorkbenchSection } from './shared/workbenchLayout';
+import { getWorkbenchSectionAnchorId, WORKBENCH_PRIORITY_NOTES, WORKBENCH_SECTIONS, type WorkbenchSection } from './shared/workbenchLayout';
 import type { User as UserType } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -208,6 +208,24 @@ export default function App() {
   const [collabLoading, setCollabLoading] = useState(false);
   const [collabNoteInput, setCollabNoteInput] = useState('');
   const [collabTaskInput, setCollabTaskInput] = useState('');
+  const workbenchSectionRefs = useRef<Record<WorkbenchSection, HTMLElement | null>>({
+    prepare: null,
+    analyze: null,
+    outputs: null,
+    collaborate: null,
+  });
+
+  const navigateToWorkbenchSection = (section: WorkbenchSection) => {
+    setActiveWorkbenchSection(section);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        workbenchSectionRefs.current[section]?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    });
+  };
 
   useEffect(() => {
     const stored = getStoredUser();
@@ -1242,7 +1260,7 @@ export default function App() {
                 {WORKBENCH_SECTIONS.map((section) => (
                   <button
                     key={section.id}
-                    onClick={() => setActiveWorkbenchSection(section.id)}
+                    onClick={() => navigateToWorkbenchSection(section.id)}
                     className={cn(
                       "w-full rounded-2xl border px-4 py-3 text-left transition-all",
                       activeWorkbenchSection === section.id
@@ -1683,17 +1701,17 @@ export default function App() {
                   </p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 min-w-0">
-                  <StatusChip title="数据准备" value={importedLead || file ? '已开始' : '待开始'} tone={importedLead || file ? 'success' : 'muted'} />
-                  <StatusChip title="模型分析" value={result ? '已生成' : '待分析'} tone={result ? 'success' : 'muted'} />
-                  <StatusChip title="报告产出" value={report || paperDraft ? '已生成' : '待生成'} tone={report || paperDraft ? 'success' : 'muted'} />
-                  <StatusChip title="协作留痕" value={collabRoom ? '已接入' : '未接入'} tone={collabRoom ? 'success' : 'muted'} />
+                  <StatusChip title="数据准备" value={importedLead || file ? '已开始' : '待开始'} tone={importedLead || file ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('prepare')} />
+                  <StatusChip title="模型分析" value={result ? '已生成' : '待分析'} tone={result ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('analyze')} />
+                  <StatusChip title="报告产出" value={report || paperDraft ? '已生成' : '待生成'} tone={report || paperDraft ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('outputs')} />
+                  <StatusChip title="协作留痕" value={collabRoom ? '已接入' : '未接入'} tone={collabRoom ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('collaborate')} />
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-2 xl:grid-cols-4 gap-2">
                 {WORKBENCH_SECTIONS.map((section) => (
                   <button
                     key={section.id}
-                    onClick={() => setActiveWorkbenchSection(section.id)}
+                    onClick={() => navigateToWorkbenchSection(section.id)}
                     className={cn(
                       "rounded-2xl border px-4 py-3 text-left transition-all",
                       activeWorkbenchSection === section.id
@@ -1714,7 +1732,7 @@ export default function App() {
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm",
               activeWorkbenchSection !== 'prepare' && "hidden"
-            )}>
+            )} id={getWorkbenchSectionAnchorId('prepare')} ref={(node) => { workbenchSectionRefs.current.prepare = node; }}>
               <div className="flex items-center justify-between gap-4 mb-5">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">当前阶段</p>
@@ -1744,7 +1762,11 @@ export default function App() {
               </div>
             </section>
 
-            <div className={cn("grid grid-cols-1 md:grid-cols-3 gap-4", activeWorkbenchSection !== 'analyze' && "hidden")}>
+            <div
+              className={cn("grid grid-cols-1 md:grid-cols-3 gap-4", activeWorkbenchSection !== 'analyze' && "hidden")}
+              id={getWorkbenchSectionAnchorId('analyze')}
+              ref={(node) => { workbenchSectionRefs.current.analyze = node; }}
+            >
               <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">拟合度</p>
                 <p className="text-2xl font-bold text-gray-900">
@@ -2056,7 +2078,11 @@ export default function App() {
               </div>
             </section>
 
-            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'outputs' && "hidden")}>
+            <section
+              className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'outputs' && "hidden")}
+              id={getWorkbenchSectionAnchorId('outputs')}
+              ref={(node) => { workbenchSectionRefs.current.outputs = node; }}
+            >
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Newspaper size={20} className="text-emerald-600" />
@@ -2229,7 +2255,11 @@ export default function App() {
               </div>
             </section>
 
-            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'collaborate' && "hidden")}>
+            <section
+              className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'collaborate' && "hidden")}
+              id={getWorkbenchSectionAnchorId('collaborate')}
+              ref={(node) => { workbenchSectionRefs.current.collaborate = node; }}
+            >
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <BarChart2 size={20} className="text-emerald-600" />
@@ -2424,16 +2454,32 @@ function StatusChip({
   title,
   value,
   tone,
+  onClick,
 }: {
   title: string;
   value: string;
   tone: 'success' | 'muted';
+  onClick?: () => void;
 }) {
-  return (
+  const content = (
     <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
       <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{title}</p>
       <p className={cn("text-sm font-semibold mt-1", tone === 'success' ? 'text-emerald-700' : 'text-gray-700')}>{value}</p>
     </div>
+  );
+
+  if (!onClick) {
+    return content;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left rounded-2xl transition-transform hover:-translate-y-0.5"
+    >
+      {content}
+    </button>
   );
 }
 

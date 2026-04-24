@@ -8,6 +8,10 @@ export type WorkbenchSectionMeta = {
   compactHint: string;
 };
 
+export function getWorkbenchSectionAnchorId(section: WorkbenchSection): string {
+  return `workbench-section-${section}`;
+}
+
 export const WORKBENCH_SECTIONS: WorkbenchSectionMeta[] = [
   {
     id: 'prepare',

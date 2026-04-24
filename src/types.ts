@@ -274,6 +274,30 @@ export interface WorkbenchFeedbackBrief {
   caution: string;
 }
 
+export interface AnalysisHistorySnapshot {
+  result: AnalysisResult;
+  aiResponse: string;
+  report?: GeneratedReport | null;
+  paperDraft?: PaperDraft | null;
+  importedLead?: ImportedResearchLead | null;
+  fileName?: string | null;
+}
+
+export interface AnalysisHistoryEntry {
+  id: string;
+  title: string;
+  headline: string;
+  sourceLabel: string;
+  createdAt: string;
+  updatedAt: string;
+  datasetShape?: "regression" | "classification" | "time-series" | "mixed";
+  bestModelName?: string;
+  hasReport: boolean;
+  hasPaperDraft: boolean;
+  hasCollaboration: boolean;
+  snapshot: AnalysisHistorySnapshot;
+}
+
 export interface PublishRiskItem {
   title: string;
   severity: "low" | "medium" | "high";

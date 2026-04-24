@@ -8,8 +8,29 @@ export type WorkbenchSectionMeta = {
   compactHint: string;
 };
 
+export type WorkbenchSectionState = 'completed' | 'current' | 'upcoming';
+
 export function getWorkbenchSectionAnchorId(section: WorkbenchSection): string {
   return `workbench-section-${section}`;
+}
+
+export function getWorkbenchSectionState(
+  activeSection: WorkbenchSection,
+  targetSection: WorkbenchSection,
+): WorkbenchSectionState {
+  const order = WORKBENCH_SECTIONS.map((section) => section.id);
+  const activeIndex = order.indexOf(activeSection);
+  const targetIndex = order.indexOf(targetSection);
+
+  if (activeIndex === targetIndex) {
+    return 'current';
+  }
+
+  if (targetIndex < activeIndex) {
+    return 'completed';
+  }
+
+  return 'upcoming';
 }
 
 export const WORKBENCH_SECTIONS: WorkbenchSectionMeta[] = [

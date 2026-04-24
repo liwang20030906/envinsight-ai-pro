@@ -1,4 +1,4 @@
-import { User, NewsItem, Comment, AnalyticsEvent, ImportedResearchLead, NewsFilters } from "../types";
+import { AnalysisHistoryEntry, AnalyticsEvent, Comment, ImportedResearchLead, NewsFilters, NewsItem, User } from "../types";
 
 // ── Auth ──
 
@@ -228,6 +228,7 @@ export function getAnalytics(): AnalyticsEvent[] {
 // ── News -> Workbench Bridge ──
 
 const IMPORTED_LEAD_KEY = "envinsight_imported_research_lead";
+const ANALYSIS_HISTORY_KEY = "envinsight_analysis_history";
 
 export function getStoredImportedLead(): ImportedResearchLead | null {
   const raw = localStorage.getItem(IMPORTED_LEAD_KEY);
@@ -240,4 +241,33 @@ export function setStoredImportedLead(lead: ImportedResearchLead | null) {
   } else {
     localStorage.removeItem(IMPORTED_LEAD_KEY);
   }
+}
+
+export function getStoredAnalysisHistory(): AnalysisHistoryEntry[] {
+  const raw = localStorage.getItem(ANALYSIS_HISTORY_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as AnalysisHistoryEntry[];
+    return [...parsed].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  } catch {
+    return [];
+  }
+}
+
+export function upsertStoredAnalysisHistory(entry: AnalysisHistoryEntry): AnalysisHistoryEntry[] {
+  const current = getStoredAnalysisHistory().filter((item) => item.id !== entry.id);
+  const next = [entry, ...current]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 30);
+  localStorage.setItem(ANALYSIS_HISTORY_KEY, JSON.stringify(next));
+  return next;
+}
+
+export function deleteStoredAnalysisHistory(entryId: string): AnalysisHistoryEntry[] {
+  const next = getStoredAnalysisHistory().filter((item) => item.id !== entryId);
+  localStorage.setItem(ANALYSIS_HISTORY_KEY, JSON.stringify(next));
+  return next;
 }

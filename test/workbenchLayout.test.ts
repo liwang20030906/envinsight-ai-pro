@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getWorkbenchSectionAnchorId, WORKBENCH_PRIORITY_NOTES, WORKBENCH_SECTIONS } from '../src/shared/workbenchLayout';
+import {
+  getWorkbenchSectionAnchorId,
+  getWorkbenchSectionState,
+  WORKBENCH_PRIORITY_NOTES,
+  WORKBENCH_SECTIONS,
+} from '../src/shared/workbenchLayout';
 
 test('workbench layout keeps a compact four-step structure', () => {
   assert.equal(WORKBENCH_SECTIONS.length, 4);
@@ -25,4 +30,12 @@ test('workbench section anchor ids stay predictable for in-page navigation', () 
   assert.equal(getWorkbenchSectionAnchorId('analyze'), 'workbench-section-analyze');
   assert.equal(getWorkbenchSectionAnchorId('outputs'), 'workbench-section-outputs');
   assert.equal(getWorkbenchSectionAnchorId('collaborate'), 'workbench-section-collaborate');
+});
+
+test('workbench section state highlights current step and marks previous steps completed', () => {
+  assert.equal(getWorkbenchSectionState('prepare', 'prepare'), 'current');
+  assert.equal(getWorkbenchSectionState('outputs', 'prepare'), 'completed');
+  assert.equal(getWorkbenchSectionState('outputs', 'analyze'), 'completed');
+  assert.equal(getWorkbenchSectionState('outputs', 'outputs'), 'current');
+  assert.equal(getWorkbenchSectionState('outputs', 'collaborate'), 'upcoming');
 });

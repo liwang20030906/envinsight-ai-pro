@@ -51,6 +51,7 @@ import { twMerge } from 'tailwind-merge';
 import {
   AnalysisResult,
   AnalysisMode,
+  AnalysisHistoryEntry,
   CollaborationRole,
   CollaborationRoom,
   ImportedResearchLead,
@@ -81,12 +82,15 @@ import {
   login as doLogin,
   logout as doLogout,
   fetchNews,
+  getStoredAnalysisHistory,
   crawlNews,
+  deleteStoredAnalysisHistory,
   likeNews,
   addComment,
   getStoredImportedLead,
   getUserInterests,
   setStoredImportedLead,
+  upsertStoredAnalysisHistory,
   updateUserInterest,
   trackEvent,
   getAnalytics,
@@ -100,7 +104,14 @@ import {
   reviewDataset,
 } from './services/workbenchService';
 import { buildImportedResearchLead, buildWorkbenchFeedbackBrief, buildWorkbenchNewsPublishReview } from './shared/researchBridge';
-import { getWorkbenchSectionAnchorId, WORKBENCH_PRIORITY_NOTES, WORKBENCH_SECTIONS, type WorkbenchSection } from './shared/workbenchLayout';
+import { filterAnalysisHistory, formatHistoryShapeLabel, type AnalysisHistoryShapeFilter } from './shared/history';
+import {
+  getWorkbenchSectionAnchorId,
+  getWorkbenchSectionState,
+  WORKBENCH_PRIORITY_NOTES,
+  WORKBENCH_SECTIONS,
+  type WorkbenchSection,
+} from './shared/workbenchLayout';
 import type { User as UserType } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -193,6 +204,12 @@ export default function App() {
   const [workbenchFeedback, setWorkbenchFeedback] = useState<WorkbenchFeedbackBrief | null>(null);
   const [publishReview, setPublishReview] = useState<WorkbenchNewsPublishReview | null>(null);
   const [activeWorkbenchSection, setActiveWorkbenchSection] = useState<WorkbenchSection>('prepare');
+  const [workbenchPanel, setWorkbenchPanel] = useState<'workspace' | 'history'>('workspace');
+  const [historyEntries, setHistoryEntries] = useState<AnalysisHistoryEntry[]>([]);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyShapeFilter, setHistoryShapeFilter] = useState<AnalysisHistoryShapeFilter>('all');
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [view, setView] = useState<'news' | 'workbench' | 'analytics'>('news');
@@ -316,6 +333,75 @@ export default function App() {
   }, [user?.displayName]);
 
   useEffect(() => {
+    const storedHistory = getStoredAnalysisHistory();
+    setHistoryEntries(storedHistory);
+    setSelectedHistoryId((prev) => prev || storedHistory[0]?.id || null);
+  }, []);
+
+  const syncHistoryEntries = (entries: AnalysisHistoryEntry[]) => {
+    setHistoryEntries(entries);
+    setSelectedHistoryId((prev) => {
+      if (prev && entries.some((item) => item.id === prev)) {
+        return prev;
+      }
+      return entries[0]?.id || null;
+    });
+  };
+
+  const buildHistoryEntry = (payload: {
+    id?: string;
+    result: AnalysisResult;
+    aiText: string;
+    reportData?: GeneratedReport | null;
+    paperDraftData?: PaperDraft | null;
+    importedLeadData?: ImportedResearchLead | null;
+    fileName?: string | null;
+    hasCollaboration?: boolean;
+  }): AnalysisHistoryEntry => {
+    const existing = payload.id ? historyEntries.find((entry) => entry.id === payload.id) : null;
+    const createdAt = existing?.createdAt || new Date().toISOString();
+    const updatedAt = new Date().toISOString();
+    const sourceLabel = payload.fileName || payload.importedLeadData?.title || `${payload.result.columns.x} × ${payload.result.columns.y}`;
+    const title = payload.importedLeadData?.title || payload.fileName || `${payload.result.columns.x} 与 ${payload.result.columns.y} 分析`;
+    const datasetShape = payload.result.profile?.datasetShape || payload.result.modelComparison?.datasetShape;
+    const bestModelName = payload.result.modelComparison?.bestModelName || '回归分析';
+    const slope = payload.result.summary.coefficients.pm25;
+    const headline = slope > 0
+      ? `${payload.result.columns.x} 升高时，${payload.result.columns.y} 呈上升趋势`
+      : slope < 0
+        ? `${payload.result.columns.x} 升高时，${payload.result.columns.y} 呈下降趋势`
+        : `${payload.result.columns.x} 与 ${payload.result.columns.y} 当前未见明显线性变化`;
+
+    return {
+      id: payload.id || crypto.randomUUID(),
+      title,
+      headline,
+      sourceLabel,
+      createdAt,
+      updatedAt,
+      datasetShape,
+      bestModelName,
+      hasReport: Boolean(payload.reportData),
+      hasPaperDraft: Boolean(payload.paperDraftData),
+      hasCollaboration: Boolean(payload.hasCollaboration),
+      snapshot: {
+        result: payload.result,
+        aiResponse: payload.aiText,
+        report: payload.reportData || null,
+        paperDraft: payload.paperDraftData || null,
+        importedLead: payload.importedLeadData || null,
+        fileName: payload.fileName || null,
+      },
+    };
+  };
+
+  const persistHistoryEntry = (entry: AnalysisHistoryEntry) => {
+    const nextEntries = upsertStoredAnalysisHistory(entry);
+    syncHistoryEntries(nextEntries);
+    setCurrentHistoryId(entry.id);
+  };
+
+  useEffect(() => {
     if (!collabMemberId || !collabRoomId) {
       return;
     }
@@ -350,6 +436,28 @@ export default function App() {
       .then(({ logs }) => setAuditTrail(logs))
       .catch(() => setAuditTrail(result.trace?.auditTrail || []));
   }, [result?.trace?.datasetId]);
+
+  useEffect(() => {
+    if (!result || !currentHistoryId) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const entry = buildHistoryEntry({
+        id: currentHistoryId,
+        result,
+        aiText: aiResponse,
+        reportData: report,
+        paperDraftData: paperDraft,
+        importedLeadData: importedLead,
+        fileName: file?.name || null,
+        hasCollaboration: Boolean(collabRoom),
+      });
+      persistHistoryEntry(entry);
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [currentHistoryId, result, aiResponse, report, paperDraft, importedLead, file?.name, collabRoom]);
 
   const loadNews = async (queryStr?: string) => {
     setNewsLoading(true);
@@ -392,11 +500,13 @@ export default function App() {
     setComplianceGuidance(null);
     setAuditTrail([]);
     setSelectedModelId(null);
+    setCurrentHistoryId(null);
   };
 
   const runWorkbenchAnalysis = async (uploadedFile: File) => {
     setError(null);
     setFile(uploadedFile);
+    setWorkbenchPanel('workspace');
     resetWorkbenchOutputs();
     setLoading(true);
 
@@ -414,6 +524,14 @@ export default function App() {
       setResult(analysisResult);
       setComplianceReview(analysisResult.complianceReview || compliance.review);
       setComplianceGuidance(analysisResult.complianceGuidance || compliance.guidance || null);
+      persistHistoryEntry(
+        buildHistoryEntry({
+          result: analysisResult,
+          aiText: '',
+          importedLeadData: importedLead,
+          fileName: uploadedFile.name,
+        }),
+      );
     } catch (err: any) {
       setError(err.message || '数据处理失败');
     } finally {
@@ -492,6 +610,7 @@ export default function App() {
     setStoredImportedLead(lead);
     setSelectedNews(item);
     setView('workbench');
+    setWorkbenchPanel('workspace');
     setMode('researcher');
     setDiscussionOpen(true);
     setDiscussionInput(`请基于导入论文《${item.title}》帮我梳理研究问题、变量设计和第一轮分析路线。`);
@@ -792,6 +911,58 @@ export default function App() {
     trackEvent('click', 'copy_workbench_news_draft');
   };
 
+  const reopenHistoryEntry = (entry: AnalysisHistoryEntry, duplicate = false) => {
+    const targetId = duplicate ? crypto.randomUUID() : entry.id;
+    const targetTitle = duplicate ? `${entry.title}（副本）` : entry.title;
+    const nextEntry: AnalysisHistoryEntry = {
+      ...entry,
+      id: targetId,
+      title: targetTitle,
+      createdAt: duplicate ? new Date().toISOString() : entry.createdAt,
+      updatedAt: new Date().toISOString(),
+      snapshot: {
+        ...entry.snapshot,
+      },
+    };
+
+    if (duplicate) {
+      persistHistoryEntry(nextEntry);
+    } else {
+      setCurrentHistoryId(entry.id);
+    }
+    setSelectedHistoryId(targetId);
+
+    setResult(nextEntry.snapshot.result);
+    setAiResponse(nextEntry.snapshot.aiResponse || '');
+    setReport(nextEntry.snapshot.report || null);
+    setPaperDraft(nextEntry.snapshot.paperDraft || null);
+    setImportedLead(nextEntry.snapshot.importedLead || null);
+    setStoredImportedLead(nextEntry.snapshot.importedLead || null);
+    setComplianceReview(nextEntry.snapshot.result.complianceReview || null);
+    setComplianceGuidance(nextEntry.snapshot.result.complianceGuidance || null);
+    setAuditTrail(nextEntry.snapshot.result.trace?.auditTrail || []);
+    setFile(null);
+    setError(null);
+    setWhatIfResponse('');
+    setSelectedModelId(nextEntry.snapshot.result.modelComparison?.bestModelId || null);
+    setWorkbenchPanel('workspace');
+    setView('workbench');
+
+    if (nextEntry.snapshot.report || nextEntry.snapshot.paperDraft) {
+      navigateToWorkbenchSection('outputs');
+    } else {
+      navigateToWorkbenchSection('analyze');
+    }
+  };
+
+  const handleDeleteHistoryEntry = (entryId: string) => {
+    const nextEntries = deleteStoredAnalysisHistory(entryId);
+    syncHistoryEntries(nextEntries);
+    if (currentHistoryId === entryId) {
+      setCurrentHistoryId(null);
+    }
+  };
+
   const downloadPDF = async () => {
     if (!result || !reportRef.current) return;
     trackEvent('click', 'download_pdf_button');
@@ -845,6 +1016,13 @@ export default function App() {
       setPdfLoading(false);
     }
   };
+
+  const filteredHistoryEntries = filterAnalysisHistory(historyEntries, historyQuery, historyShapeFilter);
+  const selectedHistoryEntry =
+    filteredHistoryEntries.find((entry) => entry.id === selectedHistoryId) ||
+    filteredHistoryEntries[0] ||
+    null;
+  const currentFileLabel = file?.name || historyEntries.find((entry) => entry.id === currentHistoryId)?.snapshot.fileName || '尚未上传';
 
   const selectedModel = result?.modelComparison?.runs.find((run) => run.id === selectedModelId) || result?.modelComparison?.runs[0] || null;
   const currentCollabMember = collabRoom?.members.find((member) => member.id === collabMemberId) || null;
@@ -1181,6 +1359,24 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">分析历史</p>
+                    <p className="text-sm text-gray-700 mt-1">已保存 {historyEntries.length} 条分析，可随时重新打开或复制。</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setWorkbenchPanel('history');
+                      setSelectedHistoryId((prev) => prev || historyEntries[0]?.id || null);
+                    }}
+                    className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-bold text-gray-600 hover:border-emerald-200 hover:text-emerald-700"
+                  >
+                    查看历史
+                  </button>
+                </div>
+              </div>
+
               {importedLead && (
                 <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-4">
                   <div className="flex items-start justify-between gap-3">
@@ -1288,6 +1484,7 @@ export default function App() {
 
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
+              workbenchPanel !== 'workspace' && "hidden",
               activeWorkbenchSection !== 'prepare' && "hidden",
               !complianceReview && "opacity-70"
             )}>
@@ -1339,6 +1536,7 @@ export default function App() {
 
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
+              workbenchPanel !== 'workspace' && "hidden",
               activeWorkbenchSection !== 'prepare' && "hidden",
               !complianceGuidance && "opacity-70"
             )}>
@@ -1363,6 +1561,7 @@ export default function App() {
 
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
+              workbenchPanel !== 'workspace' && "hidden",
               activeWorkbenchSection !== 'analyze' && "hidden",
               !result && "opacity-50 pointer-events-none"
             )}>
@@ -1427,6 +1626,7 @@ export default function App() {
 
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
+              workbenchPanel !== 'workspace' && "hidden",
               activeWorkbenchSection !== 'outputs' && "hidden",
               !result && "opacity-50 pointer-events-none"
             )}>
@@ -1459,6 +1659,7 @@ export default function App() {
 
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm",
+              workbenchPanel !== 'workspace' && "hidden",
               activeWorkbenchSection !== 'collaborate' && "hidden"
             )}>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1691,14 +1892,48 @@ export default function App() {
           </div>
 
           <div className="lg:col-span-9 space-y-5">
+            {workbenchPanel === 'workspace' && (
+              <StickyWorkbenchStepBar
+                activeSection={activeWorkbenchSection}
+                onJump={navigateToWorkbenchSection}
+              />
+            )}
+
             <section className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
               <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-emerald-600">Workbench Flow</p>
                   <h2 className="text-xl font-bold text-gray-900 mt-1">科研工作台</h2>
                   <p className="text-sm text-gray-600 mt-2 max-w-3xl leading-relaxed">
-                    处理流程已缩成紧凑导航，当前阶段之外的说明不再占满首屏。
+                    顶部步骤条会固定在页面上方，点击任一步都能直接跳到对应环节。
                   </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setWorkbenchPanel('workspace')}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-xs font-bold border transition-all",
+                        workbenchPanel === 'workspace'
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-emerald-200"
+                      )}
+                    >
+                      当前工作区
+                    </button>
+                    <button
+                      onClick={() => {
+                        setWorkbenchPanel('history');
+                        setSelectedHistoryId((prev) => prev || historyEntries[0]?.id || null);
+                      }}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-xs font-bold border transition-all",
+                        workbenchPanel === 'history'
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-emerald-200"
+                      )}
+                    >
+                      历史记录
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 min-w-0">
                   <StatusChip title="数据准备" value={importedLead || file ? '已开始' : '待开始'} tone={importedLead || file ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('prepare')} />
@@ -1707,30 +1942,174 @@ export default function App() {
                   <StatusChip title="协作留痕" value={collabRoom ? '已接入' : '未接入'} tone={collabRoom ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('collaborate')} />
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-2 xl:grid-cols-4 gap-2">
-                {WORKBENCH_SECTIONS.map((section) => (
-                  <button
-                    key={section.id}
-                    onClick={() => navigateToWorkbenchSection(section.id)}
-                    className={cn(
-                      "rounded-2xl border px-4 py-3 text-left transition-all",
-                      activeWorkbenchSection === section.id
-                        ? "border-emerald-300 bg-emerald-50 shadow-sm"
-                        : "border-gray-200 bg-gray-50 hover:bg-white"
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-gray-900">{section.shortTitle}</p>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{section.compactHint}</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">{section.description}</p>
-                  </button>
-                ))}
-              </div>
             </section>
+
+            {workbenchPanel === 'history' && (
+              <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">分析历史中心</p>
+                    <h3 className="text-2xl font-bold text-gray-900 mt-1">回看之前做过的分析，并一键继续推进</h3>
+                    <p className="text-sm text-gray-600 mt-2 max-w-3xl leading-relaxed">
+                      历史里会保存分析结果、AI 解读、报告和论文初稿快照。你可以重新打开旧分析，也可以复制成一份新版本继续做。
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 min-w-[220px]">
+                    <StatusChip title="总记录" value={`${historyEntries.length} 条`} tone={historyEntries.length ? 'success' : 'muted'} />
+                    <StatusChip title="当前来源" value={currentHistoryId ? '来自历史快照' : '当前实时分析'} tone={currentHistoryId ? 'success' : 'muted'} />
+                  </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-6">
+                  <div className="xl:col-span-1 space-y-4">
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 block">搜索历史</label>
+                      <div className="relative">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          value={historyQuery}
+                          onChange={(e) => setHistoryQuery(e.target.value)}
+                          placeholder="按标题、模型、变量搜索"
+                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-sm focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(['all', 'regression', 'classification', 'time-series', 'mixed'] as AnalysisHistoryShapeFilter[]).map((shape) => (
+                          <button
+                            key={shape}
+                            onClick={() => setHistoryShapeFilter(shape)}
+                            className={cn(
+                              "px-3 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all",
+                              historyShapeFilter === shape
+                                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                : "border-gray-200 bg-white text-gray-500 hover:border-emerald-200"
+                            )}
+                          >
+                            {shape === 'all' ? '全部' : formatHistoryShapeLabel(shape)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 max-h-[680px] overflow-y-auto pr-1">
+                      {filteredHistoryEntries.length > 0 ? filteredHistoryEntries.map((entry) => (
+                        <button
+                          key={entry.id}
+                          onClick={() => setSelectedHistoryId(entry.id)}
+                          className={cn(
+                            "w-full text-left rounded-2xl border p-4 transition-all",
+                            selectedHistoryEntry?.id === entry.id
+                              ? "border-emerald-300 bg-emerald-50"
+                              : "border-gray-200 bg-white hover:border-emerald-200"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{entry.title}</p>
+                              <p className="text-xs text-gray-500 mt-1">{entry.sourceLabel}</p>
+                            </div>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                              {formatHistoryShapeLabel(entry.datasetShape)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-3 leading-relaxed line-clamp-2">{entry.headline}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {entry.hasReport && <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">报告</span>}
+                            {entry.hasPaperDraft && <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">论文</span>}
+                            {entry.hasCollaboration && <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">协作</span>}
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-3">{new Date(entry.updatedAt).toLocaleString()}</p>
+                        </button>
+                      )) : (
+                        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
+                          <p className="text-sm text-gray-500">还没有匹配到历史记录，先跑一次分析吧。</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="xl:col-span-2">
+                    {selectedHistoryEntry ? (
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 space-y-5">
+                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">历史详情</p>
+                            <h4 className="text-2xl font-bold text-gray-900 mt-1">{selectedHistoryEntry.title}</h4>
+                            <p className="text-sm text-gray-600 mt-2 leading-relaxed">{selectedHistoryEntry.headline}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => reopenHistoryEntry(selectedHistoryEntry)}
+                              className="px-4 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-black"
+                            >
+                              重新打开
+                            </button>
+                            <button
+                              onClick={() => reopenHistoryEntry(selectedHistoryEntry, true)}
+                              className="px-4 py-2.5 rounded-xl border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-white"
+                            >
+                              复制为新分析
+                            </button>
+                            <button
+                              onClick={() => handleDeleteHistoryEntry(selectedHistoryEntry.id)}
+                              className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-500 hover:border-red-200 hover:text-red-600"
+                            >
+                              删除
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                          <StatusChip title="分析类型" value={formatHistoryShapeLabel(selectedHistoryEntry.datasetShape)} tone="success" />
+                          <StatusChip title="推荐模型" value={selectedHistoryEntry.bestModelName || '未记录'} tone="success" />
+                          <StatusChip title="创建时间" value={new Date(selectedHistoryEntry.createdAt).toLocaleDateString()} tone="muted" />
+                          <StatusChip title="最近更新" value={new Date(selectedHistoryEntry.updatedAt).toLocaleDateString()} tone="muted" />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">变量与结果</p>
+                            <div className="space-y-2 text-sm text-gray-700">
+                              <p>自变量：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.columns.x}</span></p>
+                              <p>目标变量：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.columns.y}</span></p>
+                              <p>拟合度：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.summary.rSquared.toFixed(3)}</span></p>
+                              <p>样本量：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.summary.n}</span></p>
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">已保存快照</p>
+                            <div className="space-y-2 text-sm text-gray-700">
+                              <p>AI 解读：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.aiResponse ? '已保存' : '未保存'}</span></p>
+                              <p>结构化报告：<span className="font-semibold text-gray-900">{selectedHistoryEntry.hasReport ? '已生成' : '未生成'}</span></p>
+                              <p>论文初稿：<span className="font-semibold text-gray-900">{selectedHistoryEntry.hasPaperDraft ? '已生成' : '未生成'}</span></p>
+                              <p>协作痕迹：<span className="font-semibold text-gray-900">{selectedHistoryEntry.hasCollaboration ? '已接入' : '未接入'}</span></p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {selectedHistoryEntry.snapshot.aiResponse && (
+                          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">AI 解读快照</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                              {selectedHistoryEntry.snapshot.aiResponse.slice(0, 1200)}
+                              {selectedHistoryEntry.snapshot.aiResponse.length > 1200 ? '...' : ''}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-16 text-center">
+                        <p className="text-sm text-gray-500">选择一条历史记录，就可以查看详情并恢复到工作台。</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
 
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm",
+              workbenchPanel !== 'workspace' && "hidden",
               activeWorkbenchSection !== 'prepare' && "hidden"
             )} id={getWorkbenchSectionAnchorId('prepare')} ref={(node) => { workbenchSectionRefs.current.prepare = node; }}>
               <div className="flex items-center justify-between gap-4 mb-5">
@@ -1754,7 +2133,7 @@ export default function App() {
                 <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
                   <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">当前输入状态</p>
                   <div className="space-y-3 text-sm text-gray-700">
-                    <p>数据文件：<span className="font-semibold text-gray-900">{file?.name || '尚未上传'}</span></p>
+                    <p>数据文件：<span className="font-semibold text-gray-900">{currentFileLabel}</span></p>
                     <p>研究线索：<span className="font-semibold text-gray-900">{importedLead?.title || '尚未导入论文'}</span></p>
                     <p>合规预审：<span className="font-semibold text-gray-900">{complianceReview?.summary || '尚未执行'}</span></p>
                   </div>
@@ -1763,7 +2142,7 @@ export default function App() {
             </section>
 
             <div
-              className={cn("grid grid-cols-1 md:grid-cols-3 gap-4", activeWorkbenchSection !== 'analyze' && "hidden")}
+              className={cn("grid grid-cols-1 md:grid-cols-3 gap-4", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'analyze' && "hidden")}
               id={getWorkbenchSectionAnchorId('analyze')}
               ref={(node) => { workbenchSectionRefs.current.analyze = node; }}
             >
@@ -1808,7 +2187,7 @@ export default function App() {
               </div>
             </div>
 
-            <section className={cn("bg-white rounded-2xl border border-gray-200 p-6 shadow-sm", activeWorkbenchSection !== 'analyze' && "hidden")}>
+            <section className={cn("bg-white rounded-2xl border border-gray-200 p-6 shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'analyze' && "hidden")}>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <TrendingUp size={20} className="text-emerald-600" />
@@ -1847,7 +2226,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className={cn("bg-white rounded-2xl border border-gray-200 p-6 shadow-sm", activeWorkbenchSection !== 'analyze' && "hidden")}>
+            <section className={cn("bg-white rounded-2xl border border-gray-200 p-6 shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'analyze' && "hidden")}>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Info size={20} className="text-emerald-600" />
@@ -1998,7 +2377,7 @@ export default function App() {
               )}
             </section>
 
-            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'analyze' && "hidden")}>
+            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'analyze' && "hidden")}>
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Activity size={20} className="text-emerald-600" />
@@ -2079,7 +2458,7 @@ export default function App() {
             </section>
 
             <section
-              className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'outputs' && "hidden")}
+              className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'outputs' && "hidden")}
               id={getWorkbenchSectionAnchorId('outputs')}
               ref={(node) => { workbenchSectionRefs.current.outputs = node; }}
             >
@@ -2190,7 +2569,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'outputs' && "hidden")}>
+            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'outputs' && "hidden")}>
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <FileText size={20} className="text-emerald-600" />
@@ -2217,7 +2596,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'outputs' && "hidden")}>
+            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'outputs' && "hidden")}>
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <ChevronRight size={20} className="text-emerald-600" />
@@ -2256,7 +2635,7 @@ export default function App() {
             </section>
 
             <section
-              className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'collaborate' && "hidden")}
+              className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'collaborate' && "hidden")}
               id={getWorkbenchSectionAnchorId('collaborate')}
               ref={(node) => { workbenchSectionRefs.current.collaborate = node; }}
             >
@@ -2480,6 +2859,80 @@ function StatusChip({
     >
       {content}
     </button>
+  );
+}
+
+function StickyWorkbenchStepBar({
+  activeSection,
+  onJump,
+}: {
+  activeSection: WorkbenchSection;
+  onJump: (section: WorkbenchSection) => void;
+}) {
+  return (
+    <div className="sticky top-4 z-20">
+      <section className="rounded-2xl border border-gray-200 bg-white/95 backdrop-blur px-3 py-3 shadow-sm">
+        <div className="flex items-center justify-between gap-3 px-1">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-emerald-600">Fixed Steps</p>
+            <p className="text-sm font-semibold text-gray-900 mt-1">点击流程，直接跳到对应环节</p>
+          </div>
+          <span className="hidden sm:inline-flex px-3 py-1 rounded-full bg-gray-100 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+            当前：{WORKBENCH_SECTIONS.find((section) => section.id === activeSection)?.shortTitle}
+          </span>
+        </div>
+
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+          {WORKBENCH_SECTIONS.map((section, index) => {
+            const state = getWorkbenchSectionState(activeSection, section.id);
+            return (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => onJump(section.id)}
+                className={cn(
+                  "min-w-[168px] rounded-2xl border px-4 py-3 text-left transition-all",
+                  state === 'current'
+                    ? "border-emerald-300 bg-emerald-50 shadow-sm"
+                    : state === 'completed'
+                      ? "border-emerald-200 bg-white"
+                      : "border-gray-200 bg-gray-50 hover:bg-white"
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span
+                    className={cn(
+                      "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-[10px] font-bold uppercase tracking-widest",
+                      state === 'current'
+                        ? "bg-emerald-600 text-white"
+                        : state === 'completed'
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-gray-200 text-gray-600"
+                    )}
+                  >
+                    {index + 1}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold uppercase tracking-widest",
+                      state === 'current'
+                        ? "text-emerald-600"
+                        : state === 'completed'
+                          ? "text-emerald-500"
+                          : "text-gray-400"
+                    )}
+                  >
+                    {state === 'current' ? '当前' : state === 'completed' ? '已完成' : '待进行'}
+                  </span>
+                </div>
+                <p className="text-sm font-semibold text-gray-900 mt-3">{section.shortTitle}</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{section.compactHint}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    </div>
   );
 }
 

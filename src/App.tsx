@@ -100,6 +100,7 @@ import {
   reviewDataset,
 } from './services/workbenchService';
 import { buildImportedResearchLead, buildWorkbenchFeedbackBrief, buildWorkbenchNewsPublishReview } from './shared/researchBridge';
+import { WORKBENCH_PRIORITY_NOTES, WORKBENCH_SECTIONS, type WorkbenchSection } from './shared/workbenchLayout';
 import type { User as UserType } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -121,20 +122,6 @@ const SAMPLE_DATASETS = [
   { id: 'time-series', title: '时间序列趋势', description: '按日期追踪污染与门诊量，适合预览趋势建模与时序对比。' },
   { id: 'privacy-risk', title: '高风险样本', description: '包含姓名、邮箱和摘要列，可直接预览合规拦截与 AI 脱敏方案。' },
 ] as const;
-
-type WorkbenchSection = 'prepare' | 'analyze' | 'outputs' | 'collaborate';
-
-const WORKBENCH_SECTIONS: Array<{
-  id: WorkbenchSection;
-  title: string;
-  shortTitle: string;
-  description: string;
-}> = [
-  { id: 'prepare', title: '1. 数据准备', shortTitle: '数据准备', description: '上传数据、检查合规和确认研究问题。' },
-  { id: 'analyze', title: '2. 模型分析', shortTitle: '模型分析', description: '先看关键指标，再看模型对比和 AI 解读。' },
-  { id: 'outputs', title: '3. 报告产出', shortTitle: '报告产出', description: '生成报告、论文草稿和公众编辑稿。' },
-  { id: 'collaborate', title: '4. 协作留痕', shortTitle: '协作留痕', description: '多人协作、分工推进和审计复盘。' },
-];
 
 function formatRoleLabel(role: CollaborationRole): string {
   if (role === 'lead') return '负责人';
@@ -1133,9 +1120,9 @@ export default function App() {
           )}
         </div>
       ) : (
-        <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6" ref={reportRef}>
-          <div className="lg:col-span-4 space-y-6">
-            <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-5" ref={reportRef}>
+          <div className="lg:col-span-3 space-y-4">
+            <section className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Upload size={20} className="text-emerald-600" />
                 工作台控制台
@@ -1243,15 +1230,15 @@ export default function App() {
               )}
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <section className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <BarChart2 size={20} className="text-emerald-600" />
-                页面结构图
+                阶段导航
               </h2>
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                <pre className="text-[11px] leading-6 text-gray-700 whitespace-pre-wrap font-mono">{`科研工作台\n├─ 01 数据准备\n│  ├─ 数据上传 / 示例数据\n│  ├─ 资讯导入的研究线索\n│  └─ 合规预审 + AI 合规方案\n├─ 02 模型分析\n│  ├─ 核心指标总览\n│  ├─ 图表与模型对比\n│  ├─ AI 智能解读\n│  └─ What-If 情景模拟\n├─ 03 报告产出\n│  ├─ 结构化报告\n│  ├─ 论文初稿\n│  └─ 面向大众的编辑草稿\n└─ 04 协作留痕\n   ├─ 多人协作研究室\n   └─ 审计轨迹`}</pre>
-              </div>
-              <div className="mt-4 space-y-2">
+              <p className="text-sm text-gray-500 leading-relaxed">
+                处理流程收成了 4 个轻量步骤，当前阶段之外的内容默认折叠，首屏只强调你下一步最该做什么。
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-2">
                 {WORKBENCH_SECTIONS.map((section) => (
                   <button
                     key={section.id}
@@ -1263,15 +1250,26 @@ export default function App() {
                         : "border-gray-200 hover:border-emerald-200 bg-white"
                     )}
                   >
-                    <p className="text-sm font-semibold text-gray-900">{section.title}</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-gray-900">{section.shortTitle}</p>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{section.compactHint}</span>
+                    </div>
                     <p className="text-xs text-gray-500 mt-1">{section.description}</p>
                   </button>
                 ))}
               </div>
+              <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">使用优先级</p>
+                <div className="space-y-2">
+                  {WORKBENCH_PRIORITY_NOTES.map((note) => (
+                    <p key={note} className="text-xs text-gray-600 leading-relaxed">{note}</p>
+                  ))}
+                </div>
+              </div>
             </section>
 
             <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
               activeWorkbenchSection !== 'prepare' && "hidden",
               !complianceReview && "opacity-70"
             )}>
@@ -1322,7 +1320,7 @@ export default function App() {
             </section>
 
             <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
               activeWorkbenchSection !== 'prepare' && "hidden",
               !complianceGuidance && "opacity-70"
             )}>
@@ -1346,7 +1344,7 @@ export default function App() {
             </section>
 
             <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
               activeWorkbenchSection !== 'analyze' && "hidden",
               !result && "opacity-50 pointer-events-none"
             )}>
@@ -1410,7 +1408,7 @@ export default function App() {
             </section>
 
             <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
               activeWorkbenchSection !== 'outputs' && "hidden",
               !result && "opacity-50 pointer-events-none"
             )}>
@@ -1442,7 +1440,7 @@ export default function App() {
             </section>
 
             <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm",
+              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm",
               activeWorkbenchSection !== 'collaborate' && "hidden"
             )}>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1674,37 +1672,40 @@ export default function App() {
             </section>
           </div>
 
-          <div className="lg:col-span-8 space-y-6">
-            <section className="bg-[linear-gradient(135deg,#f7fee7_0%,#ecfeff_45%,#ffffff_100%)] rounded-3xl border border-emerald-100 p-6 shadow-sm">
-              <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
+          <div className="lg:col-span-9 space-y-5">
+            <section className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-emerald-600">Research Workspace</p>
-                  <h2 className="text-3xl font-bold text-gray-900 mt-2">科研工作台结构已按“先准备、再分析、后产出、最后协作”重排</h2>
-                  <p className="text-sm text-gray-600 mt-3 max-w-3xl leading-relaxed">
-                    现在右侧只展示当前阶段最需要看的内容，避免把合规、建模、报告、协作全部堆在一个长页面里。
+                  <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-emerald-600">Workbench Flow</p>
+                  <h2 className="text-xl font-bold text-gray-900 mt-1">科研工作台</h2>
+                  <p className="text-sm text-gray-600 mt-2 max-w-3xl leading-relaxed">
+                    处理流程已缩成紧凑导航，当前阶段之外的说明不再占满首屏。
                   </p>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-0">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 min-w-0">
                   <StatusChip title="数据准备" value={importedLead || file ? '已开始' : '待开始'} tone={importedLead || file ? 'success' : 'muted'} />
                   <StatusChip title="模型分析" value={result ? '已生成' : '待分析'} tone={result ? 'success' : 'muted'} />
                   <StatusChip title="报告产出" value={report || paperDraft ? '已生成' : '待生成'} tone={report || paperDraft ? 'success' : 'muted'} />
                   <StatusChip title="协作留痕" value={collabRoom ? '已接入' : '未接入'} tone={collabRoom ? 'success' : 'muted'} />
                 </div>
               </div>
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="mt-4 grid grid-cols-2 xl:grid-cols-4 gap-2">
                 {WORKBENCH_SECTIONS.map((section) => (
                   <button
                     key={section.id}
                     onClick={() => setActiveWorkbenchSection(section.id)}
                     className={cn(
-                      "rounded-2xl border px-4 py-4 text-left transition-all",
+                      "rounded-2xl border px-4 py-3 text-left transition-all",
                       activeWorkbenchSection === section.id
-                        ? "border-emerald-300 bg-white shadow-sm"
-                        : "border-white/60 bg-white/70 hover:bg-white"
+                        ? "border-emerald-300 bg-emerald-50 shadow-sm"
+                        : "border-gray-200 bg-gray-50 hover:bg-white"
                     )}
                   >
-                    <p className="text-sm font-semibold text-gray-900">{section.shortTitle}</p>
-                    <p className="text-xs text-gray-500 mt-2 leading-relaxed">{section.description}</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-gray-900">{section.shortTitle}</p>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{section.compactHint}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">{section.description}</p>
                   </button>
                 ))}
               </div>

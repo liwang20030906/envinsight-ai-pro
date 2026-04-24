@@ -12,6 +12,40 @@ function cleanSentence(value: string | undefined, fallback: string): string {
   return trimmed && trimmed.length > 0 ? trimmed : fallback;
 }
 
+function humanizeMetricLabel(raw: string): string {
+  const normalized = raw.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    pm25: "PM2.5",
+    disease_rate: "疾病发生率",
+    respiratory_admission_rate: "呼吸系统就诊率",
+    clinic_visits: "门诊就诊量",
+    exposure_score: "暴露评分",
+    admitted: "入院风险",
+    biomarker: "生物标志物水平",
+    humidity: "湿度",
+  };
+
+  if (aliases[normalized]) {
+    return aliases[normalized];
+  }
+
+  const spaced = raw.replace(/[_-]+/g, " ").trim();
+  return spaced || raw;
+}
+
+function buildWorkbenchConclusionTitle(result: AnalysisResult): string {
+  const xLabel = humanizeMetricLabel(result.columns.x);
+  const yLabel = humanizeMetricLabel(result.columns.y);
+  const coefficient = result.summary.coefficients.pm25;
+  const direction = coefficient >= 0 ? "上升" : "下降";
+
+  if (result.summary.pValue != null && result.summary.pValue < 0.05) {
+    return `${xLabel}升高可能伴随${yLabel}${direction}`;
+  }
+
+  return `${xLabel}变化可能影响${yLabel}`;
+}
+
 function pickDatasetShape(item: NewsItem): ImportedResearchLead["suggestedDataset"] {
   const combined = `${item.title} ${item.summary} ${item.content}`.toLowerCase();
   if (/trend|time|daily|season|longitudinal|date|heatwave|forecast/.test(combined)) {
@@ -67,11 +101,12 @@ export function buildImportedResearchLead(item: NewsItem): ImportedResearchLead 
   const whyItMatters = cleanSentence(item.explainers?.whyItMatters, item.summary);
   const everydayMeaning = cleanSentence(item.explainers?.everydayMeaning, item.content.split("\n")[0] || item.summary);
   const keyFinding = item.explainers?.keyFindings?.[0] || item.summary;
+  const sourceTitle = cleanSentence(item.paperTitle, item.title);
 
   return {
     id: item.id,
     importedAt: new Date().toISOString(),
-    title: item.title,
+    title: sourceTitle,
     category: item.category,
     summary: item.summary,
     translatedAbstract: item.translatedAbstract,
@@ -81,7 +116,7 @@ export function buildImportedResearchLead(item: NewsItem): ImportedResearchLead 
     citedByCount: item.citedByCount,
     isOpenAccess: item.isOpenAccess,
     publicationYear: item.publicationYear,
-    researchQuestion: `基于“${item.title}”，是否能在本地或目标人群数据中复现 ${item.category} 暴露与健康结局之间的关键关联？`,
+    researchQuestion: `基于“${sourceTitle}”，是否能在本地或目标人群数据中复现 ${item.category} 暴露与健康结局之间的关键关联？`,
     hypothesis: `假设：${keyFinding}`,
     suggestedDataset: dataset,
     suggestedModels: buildSuggestedModels(dataset),
@@ -201,9 +236,7 @@ export function buildWorkbenchNewsPublishReview(
   const verdict: WorkbenchNewsPublishReview["verdict"] =
     highRiskCount > 0 ? "blocked" : riskItems.length > 2 ? "review_required" : "ready_with_review";
   const directPublishAllowed = verdict === "ready_with_review";
-  const conclusionTitle = lead
-    ? `${lead.category}后续分析提示：${result.columns.x} 与 ${result.columns.y} 存在值得关注的变化关系`
-    : `最新分析提示：${result.columns.x} 与 ${result.columns.y} 存在值得关注的变化关系`;
+  const conclusionTitle = buildWorkbenchConclusionTitle(result);
   const summary =
     verdict === "blocked"
       ? "当前不建议把科研工作台结果直接上传到资讯侧，至少需要先完成脱敏、来源补充和结论降级表述。"

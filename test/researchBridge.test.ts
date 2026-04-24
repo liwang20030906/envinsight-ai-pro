@@ -9,13 +9,14 @@ import type { AnalysisResult, NewsItem } from "../src/types";
 
 const sampleNews: NewsItem = {
   id: "paper-1",
-  title: "PM2.5 exposure and respiratory admissions",
+  title: "PM2.5 升高可能伴随呼吸系统住院增加",
   summary: "更高 PM2.5 暴露与呼吸系统住院增加相关。",
   content: "Researchers tracked daily pollution and hospital visits across multiple districts.",
   category: "空气质量",
   date: "2026-04-01",
   imageUrl: "https://example.com/demo.png",
   likesCount: 0,
+  paperTitle: "PM2.5 exposure and respiratory admissions",
   translatedAbstract: "研究追踪了每日污染变化与住院变化。",
   authors: ["Alice", "Bob"],
   citedByCount: 32,
@@ -63,7 +64,7 @@ const sampleResult: AnalysisResult = {
 test("buildImportedResearchLead derives a workbench-ready research lead", () => {
   const lead = buildImportedResearchLead(sampleNews);
 
-  assert.equal(lead.title, sampleNews.title);
+  assert.equal(lead.title, sampleNews.paperTitle);
   assert.equal(lead.suggestedDataset, "time-series");
   assert.ok(lead.suggestedModels.length >= 2);
   assert.ok(lead.dataNeeds.some((item) => item.includes("暴露指标")));
@@ -106,7 +107,7 @@ test("buildWorkbenchNewsPublishReview blocks direct publishing for exploratory r
 
   assert.equal(review.directPublishAllowed, false);
   assert.match(review.summary, /不建议|不能直接|必须/);
-  assert.match(review.conclusionTitle, /值得关注的变化关系/);
+  assert.equal(review.conclusionTitle, "PM2.5变化可能影响呼吸系统就诊率");
   assert.ok(review.riskItems.some((item) => item.title.includes("样本量")));
   assert.ok(review.requiredActions.length >= 3);
 });

@@ -304,6 +304,295 @@ type PaperNewsDigestInput = {
   category?: string;
 };
 
+const PAPER_EXPOSURE_PATTERNS: Array<[RegExp, string]> = [
+  [/\bpm2\.?5\b/iu, "PM2.5 暴露"],
+  [/\bpm10\b/iu, "PM10 暴露"],
+  [/\bair pollution\b/iu, "空气污染"],
+  [/\bindoor air pollution\b/iu, "室内空气污染"],
+  [/\bozone\b|\bo3\b/iu, "臭氧暴露"],
+  [/\bnitrogen dioxide\b|\bno2\b/iu, "二氧化氮暴露"],
+  [/\bheatwave\b|\bextreme heat\b/iu, "极端高温"],
+  [/\bdroughts?\b/iu, "干旱暴露"],
+  [/\bflood risk\b|\bflooding\b/iu, "洪涝风险"],
+  [/\btemperature\b/iu, "气温变化"],
+  [/\bclimate change\b|\bglobal warming\b/iu, "气候变化"],
+  [/\bdrinking water\b|\bwater contamination\b|\bgroundwater\b/iu, "饮用水污染"],
+  [/\bwater quality\b/iu, "水质变化"],
+  [/\bwastewater\b|\bsewage\b/iu, "污水暴露"],
+  [/\bmicroplastic[s]?\b/iu, "微塑料暴露"],
+  [/\bpfas\b|per-? and polyfluoroalkyl/iu, "PFAS 暴露"],
+  [/\bpesticide[s]?\b/iu, "农药暴露"],
+  [/\bantimicrobial resistance\b|\bamr\b/iu, "抗菌药耐药性"],
+  [/\bmobile genetic element[s]?\b|\bmges?\b/iu, "可移动遗传元件"],
+  [/\blead\b/iu, "铅暴露"],
+  [/\barsenic\b/iu, "砷暴露"],
+  [/\bnoise\b/iu, "噪声暴露"],
+  [/\bgreen space\b|\bgreenspace\b/iu, "城市绿地"],
+  [/\bwildfire smoke\b/iu, "野火烟雾"],
+  [/\bcarbon tax\b/iu, "碳税政策"],
+];
+
+const PAPER_OUTCOME_PATTERNS: Array<[RegExp, string]> = [
+  [/\brespiratory\b.*\b(admission|hospitali[sz]ation|visit)s?\b/iu, "呼吸系统就诊风险"],
+  [/\bcardiovascular\b|\bheart disease\b/iu, "心血管风险"],
+  [/\bkidney\b|\brenal\b/iu, "肾脏健康风险"],
+  [/\bmental health\b|\banxiety\b|\bdepression\b/iu, "心理健康风险"],
+  [/\bcognitive\b|\bcognition\b/iu, "认知发育或认知表现"],
+  [/\bsleep\b|\binsomnia\b/iu, "睡眠问题"],
+  [/\bcancer\b|\bcarcinoma\b/iu, "癌症风险"],
+  [/\basthma\b/iu, "哮喘风险"],
+  [/\bmortality\b|\bdeath\b/iu, "死亡风险"],
+  [/\binflammation\b|\bimmune\b/iu, "炎症或免疫风险"],
+  [/\bbirth\b|\bpreterm\b|\bprenatal\b/iu, "出生结局风险"],
+  [/\bhospital admission\b|\badmission\b/iu, "住院风险"],
+  [/\bwater quality index\b|\bwqi\b|\bassessment\b/iu, "水安全评估"],
+  [/\bcontrol strateg(y|ies)\b/iu, "防控策略"],
+  [/\bone health\b/iu, "同一健康协同治理"],
+];
+
+const PAPER_PHRASE_TRANSLATIONS: Array<[RegExp, string]> = [
+  [/\bwater quality assessment\b/giu, "水质评估"],
+  [/\brecreational water quality index\b|\bir-wqi\b/giu, "休闲水质指数"],
+  [/\bbathers?[’']? safety and comfort\b/giu, "游客下水安全与舒适度"],
+  [/\bmobile genetic elements?\b|\bmges?\b/giu, "可移动遗传元件"],
+  [/\bantimicrobial resistance\b|\bamr\b/giu, "抗菌药耐药性"],
+  [/\bmolecular mechanisms\b/giu, "分子机制"],
+  [/\bevolutionary ecology\b/giu, "演化生态"],
+  [/\bone health implications\b/giu, "同一健康影响"],
+  [/\bone health\b/giu, "同一健康"],
+  [/\bcontrol strategies\b/giu, "防控策略"],
+  [/\bpractical options\b/giu, "可行做法"],
+  [/\badaptive public health strategies\b/giu, "公共健康应对策略"],
+  [/\boccupational health emerging risks\b/giu, "职业健康新风险"],
+  [/\benvironmental pathogen surveillance\b/giu, "环境病原体监测"],
+  [/\bcities without universal piped wastewater infrastructure\b/giu, "缺乏完善污水管网的城市"],
+  [/\bgroundwater quality index prediction\b/giu, "地下水水质指数预测"],
+  [/\baquifer failure risk analysis\b/giu, "含水层失效风险分析"],
+  [/\bmetaheuristic-tuned artificial neural networks\b/giu, "启发式优化神经网络"],
+  [/\bclimate change\b/giu, "气候变化"],
+  [/\bwater scarcity\b/giu, "缺水风险"],
+  [/\bflood risk\b/giu, "洪涝风险"],
+  [/\bagricultural pollution\b/giu, "农业污染"],
+  [/\burban heat stress\b/giu, "城市热暴露压力"],
+  [/\bprenatal\b/giu, "孕前"],
+  [/\bpostnatal\b/giu, "出生后"],
+  [/\bdroughts?\b/giu, "干旱"],
+  [/\bcognitive development\b/giu, "认知发育"],
+  [/\brespiratory admissions?\b|\brespiratory visits?\b/giu, "呼吸系统就诊"],
+  [/\bhospital admissions?\b/giu, "住院"],
+  [/\bmental health\b/giu, "心理健康"],
+  [/\bdrinking water\b/giu, "饮用水"],
+  [/\bwater contamination\b/giu, "水污染"],
+  [/\bair pollution\b/giu, "空气污染"],
+  [/\bpm2\.?5\b/giu, "PM2.5"],
+  [/\bhealth implications\b/giu, "健康影响"],
+  [/\bcontrol strategies\b/giu, "防控策略"],
+  [/\bpublic health\b/giu, "公共健康"],
+];
+
+function pickPaperLabel(source: string, patterns: Array<[RegExp, string]>): string | null {
+  for (const [pattern, label] of patterns) {
+    if (pattern.test(source)) {
+      return label;
+    }
+  }
+  return null;
+}
+
+function inferPaperMethod(source: string): string {
+  if (/\bmeta-analysis\b|\bsystematic review\b|\breview\b/iu.test(source)) return "系统综述或证据综述";
+  if (/\bcohort\b/iu.test(source)) return "队列研究";
+  if (/\bcase-control\b/iu.test(source)) return "病例对照研究";
+  if (/\btime series\b|\blongitudinal\b/iu.test(source)) return "时间序列或长期追踪研究";
+  if (/\brandomized\b|\btrial\b/iu.test(source)) return "干预试验";
+  if (/\bpanel\b/iu.test(source)) return "面板数据分析";
+  if (/\bindex\b|\bframework\b|\bmodel\b|\bassessment\b/iu.test(source)) return "指标或评估工具研究";
+  return "观察性数据分析";
+}
+
+function extractEvidenceSnippet(source: string): string | null {
+  const normalized = source.replace(/\s+/g, " ");
+  const percentage = normalized.match(/\b\d+(?:\.\d+)?%\b/);
+  if (percentage) {
+    return `摘要里提到了约 ${percentage[0]} 这样的具体变化幅度。`;
+  }
+
+  const yearRange = normalized.match(/\b(19|20)\d{2}\s*[–-]\s*(19|20)\d{2}\b/);
+  if (yearRange) {
+    return `研究覆盖了 ${yearRange[0]} 这样的连续时间段，不是只看某一天的数据。`;
+  }
+
+  const sample = normalized.match(/\b\d{2,6}\b(?=\s+(participants|patients|people|residents|adults|children|volunteers|countries|cities|samples|case studies)\b)/iu);
+  const unit = normalized.match(/\b(participants|patients|people|residents|adults|children|volunteers|countries|cities|samples|case studies)\b/iu);
+  if (sample && unit) {
+    return `研究涉及约 ${sample[0]} ${unit[0]}，说明它不是只看了极少量个案。`;
+  }
+
+  const scenario = normalized.match(/\b\d+\s+scenarios?\b/iu);
+  if (scenario) {
+    return `摘要里还提到做了 ${scenario[0]} 的比较，说明研究者比较了不同方案。`;
+  }
+
+  return null;
+}
+
+function translatePaperPhrase(value: string): string {
+  let translated = ` ${value.toLowerCase()} `;
+  for (const [pattern, replacement] of PAPER_PHRASE_TRANSLATIONS) {
+    translated = translated.replace(pattern, ` ${replacement} `);
+  }
+
+  translated = translated
+    .replace(/\busing\b/giu, "使用")
+    .replace(/\binteraction?s?\b/giu, "相互作用")
+    .replace(/\bshaping\b/giu, "塑造")
+    .replace(/\bdrivers?\b/giu, "驱动因素")
+    .replace(/\bcentral\b/giu, "关键")
+    .replace(/\bregional\b/giu, "区域")
+    .replace(/\bimplications\b/giu, "影响")
+    .replace(/\bof\b/giu, "的")
+    .replace(/\band\b/giu, "与")
+    .replace(/\bon\b/giu, "对")
+    .replace(/\bfor\b/giu, "针对")
+    .replace(/\bin\b/giu, "在")
+    .replace(/\bthe\b/giu, "")
+    .replace(/\ba\b|\ban\b/giu, "")
+    .replace(/\s+/g, " ")
+    .replace(/[,:;()]/g, " ")
+    .trim();
+
+  return translated.replace(/\s+/g, " ").trim();
+}
+
+function normalizeChineseTopic(value: string, fallback: string): string {
+  const normalized = value
+    .replace(/^[^一-龥A-Za-z0-9]+/u, "")
+    .replace(/[^一-龥A-Za-z0-9]+$/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /[一-龥]/u.test(normalized) ? normalized : fallback;
+}
+
+function trimPaperClause(value: string): string {
+  return value.split(/[:：;；—–-]/u)[0].replace(/\s+/g, " ").trim();
+}
+
+function buildTitleDrivenSummary(input: PaperNewsDigestInput): {
+  translatedTitle: string;
+  focusSentence: string;
+  summarySentence: string;
+  plainSentence: string;
+} | null {
+  const title = input.title.trim();
+  const lower = title.toLowerCase();
+  const translatedTitle = normalizeChineseTopic(translatePaperPhrase(title), `${input.category || "环境健康"}研究`);
+
+  const driverMatch = title.match(/(.+?)\s+as\s+(?:a\s+|an\s+)?(?:central\s+)?drivers?\s+of\s+(.+)/iu);
+  if (driverMatch) {
+    const driver = normalizeChineseTopic(translatePaperPhrase(trimPaperClause(driverMatch[1])), "某类关键因素");
+    const outcome = normalizeChineseTopic(translatePaperPhrase(trimPaperClause(driverMatch[2])), "公共健康风险");
+    return {
+      translatedTitle: `${driver}与${outcome}关系综述`,
+      focusSentence: `这篇论文重点解释，为什么“${driver}”会成为“${outcome}”扩散的重要推手。`,
+      summarySentence: `${driver}可能正在推动${outcome}扩散，单靠末端治理可能不够。`,
+      plainSentence: `一句话理解：真正需要盯住的，不只是结果本身，还有背后那个会把问题越带越大的关键环节。`,
+    };
+  }
+
+  if (/assessment|index|framework|model/iu.test(lower) && /water|air|pollution|quality|risk/iu.test(lower)) {
+    const subject = pickPaperLabel(`${title} ${input.abstract}`.toLowerCase(), PAPER_EXPOSURE_PATTERNS) || `${input.category || "环境健康"}问题`;
+    return {
+      translatedTitle: `${subject}评估方法研究`,
+      focusSentence: `这篇论文更像是在做“怎么评估才更准”的方法研究，重点不是直接下健康结论，而是提升“${subject}”的识别准确度。`,
+      summarySentence: `新的评估方法可能更早识别${subject}风险，适合用来做监测和预警。`,
+      plainSentence: `一句话理解：它更像是在升级“尺子”，让大家更早看出哪里真的有风险。`,
+    };
+  }
+
+  const implicationMatch = title.match(/(.+?)\s+implications?\s+of\s+(.+)/iu);
+  if (implicationMatch) {
+    const theme = normalizeChineseTopic(translatePaperPhrase(trimPaperClause(implicationMatch[2])), "环境变化");
+    const frame = normalizeChineseTopic(translatePaperPhrase(trimPaperClause(implicationMatch[1])), "健康协同治理");
+    return {
+      translatedTitle: `${theme}的${frame}影响`,
+      focusSentence: `这篇论文重点讨论，“${theme}”为什么不能只当成单一环境问题，而要放到“${frame}”的整体框架下看。`,
+      summarySentence: `${theme}带来的冲击，往往会同时传导到人、动物和环境系统。`,
+      plainSentence: `一句话理解：气候和环境问题最后不会只影响一头，它常常会连着人、动物和城市系统一起动。`,
+    };
+  }
+
+  const interactionMatch = title.match(/(.+?)\s+interact\s+in\s+shaping\s+(.+)/iu);
+  if (interactionMatch) {
+    const factor = normalizeChineseTopic(translatePaperPhrase(trimPaperClause(interactionMatch[1])), "多种环境因素");
+    const outcome = normalizeChineseTopic(translatePaperPhrase(trimPaperClause(interactionMatch[2])), "健康发育结果");
+    return {
+      translatedTitle: `${factor}与${outcome}关系研究`,
+      focusSentence: `这篇论文重点在看，“${factor}”叠加出现时，会不会一起改变“${outcome}”。`,
+      summarySentence: `${factor}叠加出现时，可能共同影响${outcome}。`,
+      plainSentence: `一句话理解：真正麻烦的往往不是一个风险单独出现，而是多个压力叠加。`,
+    };
+  }
+
+  if (/review|meta-analysis|systematic review/iu.test(lower)) {
+    const topic = pickPaperLabel(`${title} ${input.abstract}`.toLowerCase(), PAPER_EXPOSURE_PATTERNS) || normalizeChineseTopic(translatePaperPhrase(title), `${input.category || "环境健康"}议题`);
+    return {
+      translatedTitle: `${topic}证据综述`,
+      focusSentence: `这篇论文不是在报告单一实验结果，而是在系统梳理“${topic}”已经积累了哪些证据。`,
+      summarySentence: `已有研究普遍认为，${topic}值得作为长期风险持续跟踪。`,
+      plainSentence: `一句话理解：它更像一份“研究总账”，帮大家看清这个问题到底严不严重。`,
+    };
+  }
+
+  return null;
+}
+
+function buildConcretePaperSummary(input: PaperNewsDigestInput): {
+  translatedTitle: string;
+  focusSentence: string;
+  summarySentence: string;
+  evidenceSentence: string;
+  methodSentence: string;
+  plainSentence: string;
+  confidence: number;
+} {
+  const source = `${input.title} ${input.abstract}`.toLowerCase();
+  const titleDriven = buildTitleDrivenSummary(input);
+  const exposure = pickPaperLabel(source, PAPER_EXPOSURE_PATTERNS) || `${input.category || "环境因素"}问题`;
+  const outcome = pickPaperLabel(source, PAPER_OUTCOME_PATTERNS) || null;
+  const method = inferPaperMethod(source);
+  const evidence = extractEvidenceSnippet(source);
+
+  if (titleDriven) {
+    return {
+      translatedTitle: titleDriven.translatedTitle,
+      focusSentence: titleDriven.focusSentence,
+      summarySentence: titleDriven.summarySentence,
+      evidenceSentence: evidence || `摘要里给出的细节说明，研究者不是空泛讨论，而是在拿具体案例、时间段或方案做比较。`,
+      methodSentence: `从摘要看，这更像一项${method}，重点是把问题讲清楚、把判断依据补完整。`,
+      plainSentence: titleDriven.plainSentence,
+      confidence: 2,
+    };
+  }
+
+  const translatedTitle = outcome
+    ? `${exposure}与${outcome}的关系研究`
+    : `${exposure}相关研究`;
+  const focusSentence = outcome
+    ? `这篇论文重点在看“${exposure}”和“${outcome}”之间有没有关系。`
+    : `这篇论文重点在看“${exposure}”会不会带来值得注意的环境或健康影响。`;
+  const summarySentence = outcome
+    ? `${exposure}可能和${outcome}有关，但还需要结合完整论文继续判断证据强度。`
+    : `${exposure}可能正在带来值得持续跟踪的新风险，适合继续观察后续证据。`;
+  const evidenceSentence = evidence || `摘要里给出的信息说明，研究者确实拿真实数据在看这个问题，而不是只停留在猜测。`;
+  const methodSentence = outcome
+    ? `从摘要看，这更像一项${method}，研究者主要是比较暴露变化和健康结果有没有一起变化。`
+    : `从摘要看，这更像一项${method}，研究者主要是在判断这个问题该怎么监测、评估或解释。`;
+  const plainSentence = outcome
+    ? `一句话理解：如果你关心${exposure}，这篇论文是在提醒你，它可能和${outcome}连在一起。`
+    : `一句话理解：这篇论文提醒大家，${exposure}这件事本身就值得继续盯着看。`;
+  return { translatedTitle, focusSentence, summarySentence, evidenceSentence, methodSentence, plainSentence, confidence: outcome ? 2 : 1 };
+}
+
 function extractSentences(text: string): string[] {
   return text
     .replace(/\s+/g, " ")
@@ -337,79 +626,80 @@ export function buildLocalPaperNewsDigest(input: PaperNewsDigestInput): NewsExpl
   const lead = sentences[0] || input.abstract || input.title;
   const support = sentences[1] || sentences[0] || input.abstract || input.title;
   const method = sentences[2] || support;
+  const concrete = buildConcretePaperSummary(input);
   const leadCN = chineseOnlySummary(
     lead,
-    `研究首先指出，${input.category || "环境健康"}议题正在成为一个值得公众关注的问题。`,
+    concrete.focusSentence,
   );
   const supportCN = chineseOnlySummary(
     support,
-    "摘要进一步说明，这类环境暴露或变化与真实健康结局之间可能存在值得继续追踪的联系。",
+    concrete.evidenceSentence,
   );
   const methodCN = chineseOnlySummary(
     method,
-    "从摘要能看出，研究者使用了数据分析、实验观察或系统比较的方法来验证这个问题。",
+    concrete.methodSentence,
   );
   const translatedTitle = /[\u4e00-\u9fa5]/.test(input.title)
     ? input.title
-    : `${input.category || "环境健康"}研究速读：一项值得关注的新发现`;
+    : concrete.translatedTitle;
   const summary = trimSentence(
-    `这篇发表于${input.journal || "学术期刊"}的研究用大白话来说是：${input.category || "环境健康"}变化，可能会影响真实健康或暴露结果。`,
+    `先说结论：${concrete.summarySentence}`,
     110,
   );
 
   const translatedAbstract = [
-    `中文导读：这篇论文主要想回答一个和${input.category || "环境健康"}有关的现实问题。`,
-    `从摘要来看，研究者先描述了一个值得关注的环境健康现象：${leadCN}`,
-    `然后又补充说明了研究中最关键的发现或背景：${supportCN}`,
-    `如果只记一句话，可以把它理解成：这项研究提示 ${input.category || "环境健康"} 议题和真实健康风险之间可能存在值得继续验证的联系。`,
+    `给普通人看的版本是：${concrete.focusSentence}`,
+    `研究者先给出的一条核心线索是：${leadCN}`,
+    `摘要里还能看到的补充信息是：${supportCN}`,
+    `所以最适合记住的一句话是：${concrete.summarySentence}`,
   ].join("");
   const plainLanguageSummary = trimSentence(
-    `一句大白话：它不是在告诉你“已经被完全证明了什么”，而是在提醒我们——某种环境因素可能真的会影响健康，值得继续关注和验证。`,
+    concrete.plainSentence,
     120,
   );
   const keyFindings = [
-    trimSentence(`研究最核心的观察是：${leadCN}`, 120),
-    trimSentence(`摘要进一步补充的关键信息是：${supportCN}`, 120),
+    trimSentence(`最值得记住的一点是：${leadCN}`, 120),
+    trimSentence(`摘要里还能读出的有效信息是：${supportCN}`, 120),
     trimSentence(
       input.citedByCount != null
-        ? `这篇论文目前已被引用约 ${input.citedByCount} 次，说明它在学术讨论中已有一定关注度。`
-        : `论文发表于 ${input.publicationDate || "近年"}，更适合和最新研究一起交叉阅读。`,
+        ? `这篇论文目前已被引用约 ${input.citedByCount} 次，说明它已经引起了不少研究者关注。`
+        : `论文发表于 ${input.publicationDate || "近年"}，更适合和同主题的新研究放在一起看。`,
       120,
     ),
   ];
   const limitations = [
-    "这里只是基于论文摘要做通俗化解读，摘要通常不会完整呈现所有实验细节和统计检验。",
-    "如果要把它用于科研决策，还需要回到原文查看样本量、研究设计、混杂因素控制和局限性声明。",
-    "单篇论文更适合提供线索，不适合直接替代系统综述或临床/政策结论。",
+    "这里是根据论文摘要做的通俗版解释，摘要本身不会把所有细节都写全。",
+    "如果你要认真判断结论靠不靠谱，还得回原文看样本量、研究方法和局限性。",
+    "单篇论文更像是“一个重要线索”，还不能直接替代正式指南或系统综述。",
   ];
   const publicCautions = [
-    "不要把单篇论文的结果直接理解为对每个人都成立。",
-    "不要把“相关”自动理解成“因果”或“已经证明”。",
-    "如果涉及健康风险判断，仍应以医生、指南或系统综述为准。",
+    "不要把一篇论文的结果直接理解成“所有人都一定如此”。",
+    "看到“有关联”，不等于已经证明是直接因果。",
+    "如果涉及健康判断，还是要以医生意见、指南或系统综述为准。",
   ];
   const readerActions = [
-    "先看研究对象和暴露指标是不是与你关心的人群或场景一致。",
-    "再看论文方法是否能支持它提出的结论，特别要关注样本量和对照设计。",
-    "如果要引用到报告或论文里，建议和至少 2-3 篇同主题研究交叉验证。",
+    "先看研究对象是不是你真正关心的人群，比如儿童、老人还是普通成年人。",
+    "再看研究怎么做的，特别留意样本量够不够、有没有对照、有没有控制其他影响因素。",
+    "如果你要把它写进报告，最好再找 2 到 3 篇同主题论文一起对照着看。",
   ];
   const whyItMatters = trimSentence(
-    `它之所以重要，是因为这项研究把“${input.category || "环境健康"}”问题和真实健康或暴露结果联系起来，帮助非专业读者快速理解这类风险为什么值得关注。`,
+    `这篇论文值得关注，是因为它把一个具体环境议题拆成普通人能听懂的风险线索或判断方法，让你知道这件事为什么和现实生活有关。`,
     160,
   );
   const howStudyWorked = trimSentence(
-    `从摘要看，研究大致采用了这样的思路：先界定研究问题，再采集或整理相关暴露与结局数据，最后用统计或实验方法评估二者之间的关系。摘要中提到的关键信息可以概括为：${methodCN}`,
+    `你可以把这项研究理解成一个“三步走”：先提出问题，再收集数据，最后用研究方法看两者是不是一起变化。摘要里能看到的核心做法是：${methodCN}`,
     180,
   );
   const everydayMeaning = trimSentence(
-    `对普通读者来说，这篇论文更像是在回答“这种环境变化是不是可能影响我的健康或生活环境”。它不能直接给出个人诊断，但能帮助我们知道哪些风险值得更早关注。`,
+    `对普通人来说，这篇论文真正有用的地方在于：它告诉你哪些环境问题值得更早关注，以及应该把注意力放在风险、监测还是治理方法上。`,
     160,
   );
   const plainTextContent = [
-    `这篇研究如果翻成大众语言，可以理解成：研究者正在检查一个环境变化，看看它会不会和真实健康结果、暴露水平或公共卫生压力有关。`,
-    `先看最重要的发现。摘要里最值得抓住的两点是：${leadCN}；以及 ${supportCN}。这并不一定代表“已经完全证明”，但至少说明这个问题值得继续追踪。`,
-    `再看研究怎么做。摘要透露出的关键信息可以概括为：${methodCN}。换句话说，研究者不是只在表达观点，而是在尝试用数据、实验或统计方法去回答问题。`,
-    `如果把它放到日常生活里理解，这项研究其实是在提醒大家：面对“${input.category || "环境健康"}”议题时，哪些风险可能被低估了，哪些监测、预防或公共决策值得更早准备。`,
-    `最后一定要记住：单篇论文更像“研究线索”，不是“终局答案”。如果要把它写成资讯或建议，必须同步写清楚样本范围、局限性和它还不能说明什么。`,
+    `先用最简单的话说：${concrete.focusSentence}`,
+    `这篇论文里最值得普通人记住的是两点：${leadCN}；以及 ${supportCN}。这说明这个问题不是空穴来风，但也还没有到“一锤定音”的程度。`,
+    `研究怎么做的也很关键。摘要里透露出的做法可以概括成：${methodCN}。也就是说，研究者是在认真用数据或实验做判断，不只是提出一个猜想。`,
+    `如果把它放回日常生活，这项研究其实是在提醒大家：遇到“${input.category || "环境健康"}”相关问题时，哪些风险值得更早关注，哪些预防动作可以提前准备。`,
+    `最后要记住：单篇论文更像“提醒你注意的信号”，不是“最终结论”。真正发布成大众资讯时，必须把局限性和不能说明的部分一起讲清楚。`,
   ].join("\n\n");
 
   return {
@@ -437,7 +727,8 @@ export async function generatePaperNewsDigest(input: PaperNewsDigestInput): Prom
 要求：
 - 必须忠于原始论文摘要，不要编造数据、样本量或结论
 - 明确区分“观察到相关”与“证明因果”
-- 语言尽量口语化，避免术语堆砌；出现专业概念时要换成大众能懂的话
+- 语言尽量口语化，像在给非专业大众解释；避免术语堆砌，出现专业概念时要换成大众能懂的话
+- 每段都优先回答“这对普通人意味着什么”，不要写成科研论文腔
 - 输出内容面向资讯 feeds 流，适合大众快速阅读
 你必须输出纯 JSON（不要 markdown 代码块），字段必须包含：
 - title

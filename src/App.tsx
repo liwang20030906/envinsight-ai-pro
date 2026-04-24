@@ -85,7 +85,6 @@ import {
   likeNews,
   addComment,
   getStoredImportedLead,
-  publishWorkbenchNews,
   getUserInterests,
   setStoredImportedLead,
   updateUserInterest,
@@ -122,6 +121,20 @@ const SAMPLE_DATASETS = [
   { id: 'time-series', title: '时间序列趋势', description: '按日期追踪污染与门诊量，适合预览趋势建模与时序对比。' },
   { id: 'privacy-risk', title: '高风险样本', description: '包含姓名、邮箱和摘要列，可直接预览合规拦截与 AI 脱敏方案。' },
 ] as const;
+
+type WorkbenchSection = 'prepare' | 'analyze' | 'outputs' | 'collaborate';
+
+const WORKBENCH_SECTIONS: Array<{
+  id: WorkbenchSection;
+  title: string;
+  shortTitle: string;
+  description: string;
+}> = [
+  { id: 'prepare', title: '1. 数据准备', shortTitle: '数据准备', description: '上传数据、检查合规和确认研究问题。' },
+  { id: 'analyze', title: '2. 模型分析', shortTitle: '模型分析', description: '先看关键指标，再看模型对比和 AI 解读。' },
+  { id: 'outputs', title: '3. 报告产出', shortTitle: '报告产出', description: '生成报告、论文草稿和公众编辑稿。' },
+  { id: 'collaborate', title: '4. 协作留痕', shortTitle: '协作留痕', description: '多人协作、分工推进和审计复盘。' },
+];
 
 function formatRoleLabel(role: CollaborationRole): string {
   if (role === 'lead') return '负责人';
@@ -177,7 +190,6 @@ export default function App() {
   const [auditTrail, setAuditTrail] = useState<AuditLogEntry[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [paperLoading, setPaperLoading] = useState(false);
-  const [publishLoading, setPublishLoading] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [discussionOpen, setDiscussionOpen] = useState(false);
@@ -193,6 +205,7 @@ export default function App() {
   const [importedLead, setImportedLead] = useState<ImportedResearchLead | null>(null);
   const [workbenchFeedback, setWorkbenchFeedback] = useState<WorkbenchFeedbackBrief | null>(null);
   const [publishReview, setPublishReview] = useState<WorkbenchNewsPublishReview | null>(null);
+  const [activeWorkbenchSection, setActiveWorkbenchSection] = useState<WorkbenchSection>('prepare');
   const reportRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [view, setView] = useState<'news' | 'workbench' | 'analytics'>('news');
@@ -240,6 +253,30 @@ export default function App() {
       triggerAIAnalysis(result, mode);
     }
   }, [result, mode]);
+
+  useEffect(() => {
+    if (importedLead || complianceReview) {
+      setActiveWorkbenchSection('prepare');
+    }
+  }, [importedLead, complianceReview]);
+
+  useEffect(() => {
+    if (result) {
+      setActiveWorkbenchSection('analyze');
+    }
+  }, [result]);
+
+  useEffect(() => {
+    if (report || paperDraft || publishReview) {
+      setActiveWorkbenchSection('outputs');
+    }
+  }, [report, paperDraft, publishReview]);
+
+  useEffect(() => {
+    if (collabRoom) {
+      setActiveWorkbenchSection('collaborate');
+    }
+  }, [collabRoom]);
 
   useEffect(() => {
     setSelectedModelId(result?.modelComparison?.bestModelId || null);
@@ -735,31 +772,19 @@ export default function App() {
     }
   };
 
-  const handlePublishToNewsFeed = async () => {
-    if (!result || !publishReview || !workbenchFeedback) return;
-    if (publishReview.verdict === 'blocked') {
-      setError('当前结果还不能直接推送到大众资讯流，请先完成复核。');
-      return;
-    }
-
-    setPublishLoading(true);
-    try {
-      const published = await publishWorkbenchNews({
-        result,
-        importedLead,
-        publishReview,
-        workbenchFeedback,
-      });
-      await loadNews(searchQuery);
-      setSelectedNews(published);
-      setView('news');
-      setMode('public');
-      trackEvent('click', 'publish_workbench_to_news', { category: published.category, newsId: published.id });
-    } catch (err: any) {
-      setError(err.message || '推送到大众资讯流失败');
-    } finally {
-      setPublishLoading(false);
-    }
+  const handleCopyWorkbenchDraft = async () => {
+    if (!publishReview) return;
+    const draft = [
+      publishReview.conclusionTitle,
+      '',
+      publishReview.publicDraftSummary,
+      '',
+      publishReview.publicDraftBody,
+      '',
+      '发布说明：大众资讯流只展示真实论文解读，这份工作台结论需要作为论文详情页的后续验证备注或人工编辑草稿使用。',
+    ].join('\n');
+    await navigator.clipboard.writeText(draft);
+    trackEvent('click', 'copy_workbench_news_draft');
   };
 
   const downloadPDF = async () => {
@@ -1113,8 +1138,11 @@ export default function App() {
             <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Upload size={20} className="text-emerald-600" />
-                数据接入
+                工作台控制台
               </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                先把数据和研究问题准备好，再进入模型分析；这样更符合大多数用户“先确认数据、再看结果、最后导出”的使用习惯。
+              </p>
               <div
                 className={cn(
                   "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer group",
@@ -1215,8 +1243,36 @@ export default function App() {
               )}
             </section>
 
+            <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <BarChart2 size={20} className="text-emerald-600" />
+                页面结构图
+              </h2>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                <pre className="text-[11px] leading-6 text-gray-700 whitespace-pre-wrap font-mono">{`科研工作台\n├─ 01 数据准备\n│  ├─ 数据上传 / 示例数据\n│  ├─ 资讯导入的研究线索\n│  └─ 合规预审 + AI 合规方案\n├─ 02 模型分析\n│  ├─ 核心指标总览\n│  ├─ 图表与模型对比\n│  ├─ AI 智能解读\n│  └─ What-If 情景模拟\n├─ 03 报告产出\n│  ├─ 结构化报告\n│  ├─ 论文初稿\n│  └─ 面向大众的编辑草稿\n└─ 04 协作留痕\n   ├─ 多人协作研究室\n   └─ 审计轨迹`}</pre>
+              </div>
+              <div className="mt-4 space-y-2">
+                {WORKBENCH_SECTIONS.map((section) => (
+                  <button
+                    key={section.id}
+                    onClick={() => setActiveWorkbenchSection(section.id)}
+                    className={cn(
+                      "w-full rounded-2xl border px-4 py-3 text-left transition-all",
+                      activeWorkbenchSection === section.id
+                        ? "border-emerald-300 bg-emerald-50"
+                        : "border-gray-200 hover:border-emerald-200 bg-white"
+                    )}
+                  >
+                    <p className="text-sm font-semibold text-gray-900">{section.title}</p>
+                    <p className="text-xs text-gray-500 mt-1">{section.description}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              activeWorkbenchSection !== 'prepare' && "hidden",
               !complianceReview && "opacity-70"
             )}>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1267,6 +1323,7 @@ export default function App() {
 
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              activeWorkbenchSection !== 'prepare' && "hidden",
               !complianceGuidance && "opacity-70"
             )}>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1290,6 +1347,7 @@ export default function App() {
 
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              activeWorkbenchSection !== 'analyze' && "hidden",
               !result && "opacity-50 pointer-events-none"
             )}>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1353,6 +1411,7 @@ export default function App() {
 
             <section className={cn(
               "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-opacity",
+              activeWorkbenchSection !== 'outputs' && "hidden",
               !result && "opacity-50 pointer-events-none"
             )}>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1382,7 +1441,10 @@ export default function App() {
               </div>
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <section className={cn(
+              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm",
+              activeWorkbenchSection !== 'collaborate' && "hidden"
+            )}>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <MessageSquare size={20} className="text-emerald-600" />
                 多人协作研究室
@@ -1613,7 +1675,75 @@ export default function App() {
           </div>
 
           <div className="lg:col-span-8 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <section className="bg-[linear-gradient(135deg,#f7fee7_0%,#ecfeff_45%,#ffffff_100%)] rounded-3xl border border-emerald-100 p-6 shadow-sm">
+              <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-emerald-600">Research Workspace</p>
+                  <h2 className="text-3xl font-bold text-gray-900 mt-2">科研工作台结构已按“先准备、再分析、后产出、最后协作”重排</h2>
+                  <p className="text-sm text-gray-600 mt-3 max-w-3xl leading-relaxed">
+                    现在右侧只展示当前阶段最需要看的内容，避免把合规、建模、报告、协作全部堆在一个长页面里。
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-0">
+                  <StatusChip title="数据准备" value={importedLead || file ? '已开始' : '待开始'} tone={importedLead || file ? 'success' : 'muted'} />
+                  <StatusChip title="模型分析" value={result ? '已生成' : '待分析'} tone={result ? 'success' : 'muted'} />
+                  <StatusChip title="报告产出" value={report || paperDraft ? '已生成' : '待生成'} tone={report || paperDraft ? 'success' : 'muted'} />
+                  <StatusChip title="协作留痕" value={collabRoom ? '已接入' : '未接入'} tone={collabRoom ? 'success' : 'muted'} />
+                </div>
+              </div>
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-3">
+                {WORKBENCH_SECTIONS.map((section) => (
+                  <button
+                    key={section.id}
+                    onClick={() => setActiveWorkbenchSection(section.id)}
+                    className={cn(
+                      "rounded-2xl border px-4 py-4 text-left transition-all",
+                      activeWorkbenchSection === section.id
+                        ? "border-emerald-300 bg-white shadow-sm"
+                        : "border-white/60 bg-white/70 hover:bg-white"
+                    )}
+                  >
+                    <p className="text-sm font-semibold text-gray-900">{section.shortTitle}</p>
+                    <p className="text-xs text-gray-500 mt-2 leading-relaxed">{section.description}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className={cn(
+              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm",
+              activeWorkbenchSection !== 'prepare' && "hidden"
+            )}>
+              <div className="flex items-center justify-between gap-4 mb-5">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">当前阶段</p>
+                  <h3 className="text-xl font-bold text-gray-900 mt-1">数据准备</h3>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-gray-100 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                  先确认输入，再开始分析
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">推荐使用顺序</p>
+                  <ol className="space-y-3 text-sm text-gray-700">
+                    <li>1. 先上传 CSV 或导入一篇真实论文，明确这次分析要回答什么问题。</li>
+                    <li>2. 看合规预审，确认有没有敏感字段、版权风险或样本结构问题。</li>
+                    <li>3. 预审通过后再进入“模型分析”，不要一开始就直接看 AI 解读。</li>
+                  </ol>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">当前输入状态</p>
+                  <div className="space-y-3 text-sm text-gray-700">
+                    <p>数据文件：<span className="font-semibold text-gray-900">{file?.name || '尚未上传'}</span></p>
+                    <p>研究线索：<span className="font-semibold text-gray-900">{importedLead?.title || '尚未导入论文'}</span></p>
+                    <p>合规预审：<span className="font-semibold text-gray-900">{complianceReview?.summary || '尚未执行'}</span></p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div className={cn("grid grid-cols-1 md:grid-cols-3 gap-4", activeWorkbenchSection !== 'analyze' && "hidden")}>
               <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">拟合度</p>
                 <p className="text-2xl font-bold text-gray-900">
@@ -1655,7 +1785,7 @@ export default function App() {
               </div>
             </div>
 
-            <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <section className={cn("bg-white rounded-2xl border border-gray-200 p-6 shadow-sm", activeWorkbenchSection !== 'analyze' && "hidden")}>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <TrendingUp size={20} className="text-emerald-600" />
@@ -1694,7 +1824,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <section className={cn("bg-white rounded-2xl border border-gray-200 p-6 shadow-sm", activeWorkbenchSection !== 'analyze' && "hidden")}>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Info size={20} className="text-emerald-600" />
@@ -1845,7 +1975,7 @@ export default function App() {
               )}
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'analyze' && "hidden")}>
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Activity size={20} className="text-emerald-600" />
@@ -1925,7 +2055,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'outputs' && "hidden")}>
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Newspaper size={20} className="text-emerald-600" />
@@ -1946,7 +2076,7 @@ export default function App() {
                       <p className="text-sm text-amber-900 leading-relaxed">{workbenchFeedback.caution}</p>
                     </div>
                     <p className="text-xs text-gray-500">
-                      这块用于把科研工作台里的分析结果重新整理成大众资讯摘要，实现“论文线索 → 本地验证 → 公众解读”的闭环。
+                      大众资讯流只展示真实论文解读；工作台结论会整理为编辑草稿，用于补充到对应论文详情页或交给人工复核。
                     </p>
                     {publishReview && (
                       <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
@@ -2013,19 +2143,13 @@ export default function App() {
                         <KeyValueList title="推荐发布流程" items={publishReview.requiredActions} />
                         <div className="flex flex-wrap gap-3">
                           <button
-                            onClick={handlePublishToNewsFeed}
-                            disabled={publishLoading || publishReview.verdict === 'blocked'}
-                            className={cn(
-                              "px-4 py-2.5 rounded-xl text-sm font-medium transition-all",
-                              publishReview.verdict === 'blocked'
-                                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                                : "bg-emerald-600 text-white hover:bg-emerald-700"
-                            )}
+                            onClick={handleCopyWorkbenchDraft}
+                            className="px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-gray-900 text-white hover:bg-gray-800"
                           >
-                            {publishLoading ? '正在推送到资讯流...' : '直接推送到大众资讯流'}
+                            复制编辑草稿
                           </button>
                           <p className="text-xs text-gray-500 self-center">
-                            推送后会直接出现在大众资讯页，并自动使用“核心结论”作为标题。
+                            不再直发到资讯流，避免把非论文内容混入大众 feed。
                           </p>
                         </div>
                       </div>
@@ -2039,7 +2163,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'outputs' && "hidden")}>
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <FileText size={20} className="text-emerald-600" />
@@ -2066,7 +2190,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'outputs' && "hidden")}>
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <ChevronRight size={20} className="text-emerald-600" />
@@ -2104,7 +2228,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <section className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", activeWorkbenchSection !== 'collaborate' && "hidden")}>
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <BarChart2 size={20} className="text-emerald-600" />
@@ -2291,6 +2415,23 @@ function KeyValueList({ title, items }: { title: string; items: string[] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function StatusChip({
+  title,
+  value,
+  tone,
+}: {
+  title: string;
+  value: string;
+  tone: 'success' | 'muted';
+}) {
+  return (
+    <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{title}</p>
+      <p className={cn("text-sm font-semibold mt-1", tone === 'success' ? 'text-emerald-700' : 'text-gray-700')}>{value}</p>
     </div>
   );
 }
@@ -2748,7 +2889,7 @@ function NewsDetail({
 
         {item.translatedAbstract && (
           <div className="mt-12 rounded-3xl border border-gray-100 bg-gray-50 p-6">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-3">摘要通俗版</h3>
+            <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-3">给普通人看的总结</h3>
             <p className="text-base text-gray-700 leading-relaxed">{item.translatedAbstract}</p>
             {item.explainers?.plainLanguageSummary && (
               <div className="mt-4 rounded-2xl border border-emerald-100 bg-white px-4 py-3">
@@ -2763,7 +2904,7 @@ function NewsDetail({
           <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6">
             {item.explainers.translatedTitle && (
               <div className="rounded-3xl border border-gray-100 p-6 md:col-span-2">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">论文标题怎么理解</h3>
+                <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">论文题目翻成白话怎么理解</h3>
                 <p className="text-sm text-gray-700 leading-relaxed">{item.explainers.translatedTitle}</p>
               </div>
             )}
@@ -2772,7 +2913,7 @@ function NewsDetail({
               <p className="text-sm text-gray-700 leading-relaxed">{item.explainers.whyItMatters}</p>
             </div>
             <div className="rounded-3xl border border-gray-100 p-6">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">研究是怎么做的</h3>
+              <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-3">研究大概是怎么做的</h3>
               <p className="text-sm text-gray-700 leading-relaxed">{item.explainers.howStudyWorked}</p>
             </div>
             <div className="rounded-3xl border border-gray-100 p-6">
@@ -2840,6 +2981,11 @@ function NewsDetail({
                 开放获取
               </span>
             )}
+            {item.discoverySource === 'google-scholar' && (
+              <span className="text-xs text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full font-medium">
+                Google Scholar 收录
+              </span>
+            )}
             {item.authors && item.authors.length > 0 && (
               <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full font-medium">
                 {item.authors.slice(0, 3).join(" / ")}
@@ -2849,6 +2995,12 @@ function NewsDetail({
               <a href={item.sourceLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-sm">
                 <ExternalLink size={16} />
                 查看原始论文
+              </a>
+            )}
+            {item.scholarLink && (
+              <a href={item.scholarLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-gray-900 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-gray-800 transition-colors shadow-sm">
+                <ExternalLink size={16} />
+                Google Scholar
               </a>
             )}
           </div>

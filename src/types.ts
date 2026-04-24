@@ -232,6 +232,8 @@ export interface NewsItem {
   sourceLink?: string;
   sourceJournal?: string;
   paperTitle?: string;
+  discoverySource?: "google-scholar" | "openalex";
+  scholarLink?: string;
   comments?: Comment[];
   isOpenAccess?: boolean;
   publicationYear?: number;

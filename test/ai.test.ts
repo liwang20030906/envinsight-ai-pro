@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildLocalAnalysis,
+  buildLocalPaperNewsDigest,
   generatePaperNewsDigest,
   buildLocalWhatIfAnalysis,
   generateComplianceGuidance,
@@ -197,6 +198,22 @@ test("generateDiscussionResponse falls back locally when OPENAI_API_KEY is missi
   }
 });
 
+
+
+test("buildLocalPaperNewsDigest gives specific Chinese copy for method papers", () => {
+  const digest = buildLocalPaperNewsDigest({
+    title: "Water Quality Assessment in the Northern Part of the Romanian Black Sea Coastal Area Using an Integrated Index",
+    abstract:
+      "This study proposes and evaluates a specialized Recreational Water Quality Index designed to prioritize bathers' safety and comfort. The research compares four scenarios across 2022-2024 and examines how weighting choices change bathing water assessments.",
+    category: "饮用水",
+    publicationDate: "2026-01-01",
+  });
+
+  assert.match(digest.oneSentenceSummary, /评估方法|监测|预警/);
+  assert.match(digest.translatedTitle, /水质评估|休闲水质指数|饮用水|评估方法/);
+  assert.doesNotMatch(digest.oneSentenceSummary, /健康风险有关/);
+});
+
 test("generatePaperNewsDigest falls back locally when OPENAI_API_KEY is missing", async () => {
   const previousKey = process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
@@ -214,7 +231,9 @@ test("generatePaperNewsDigest falls back locally when OPENAI_API_KEY is missing"
     assert.equal(result.provider, "local-fallback");
     assert.ok(result.result.keyFindings.length >= 3);
     assert.match(result.result.whyItMatters, /环境健康|值得关注/);
-    assert.match(result.result.translatedAbstract, /中文导读|这篇论文/);
+    assert.match(result.result.translatedAbstract, /给普通人看的版本|这篇论文/);
+    assert.match(result.result.oneSentenceSummary, /先说结论|提醒大家/);
+    assert.match(result.result.plainLanguageSummary, /PM2\.5|呼吸系统|空气污染|健康/);
     assert.ok(result.result.publicCautions?.length);
     assert.ok(result.result.plainLanguageSummary);
   } finally {

@@ -63,6 +63,8 @@ export async function fetchNews(params?: { q?: string; category?: string; filter
     sourceJournal: item.sourceJournal,
     sourceLink: item.sourceLink,
     paperTitle: item.paperTitle,
+    discoverySource: item.discoverySource,
+    scholarLink: item.scholarLink,
     isOpenAccess: item.isOpenAccess,
     publicationYear: item.publicationYear,
     comments: (item.comments || []).map((c: any) => ({
@@ -86,7 +88,30 @@ export async function crawlNews(category?: string, filters?: NewsFilters): Promi
     }),
   });
   if (!res.ok) throw new Error("Crawl failed");
-  return res.json();
+  const raw = await res.json();
+  return raw.map((item: any) => ({
+    id: item.id,
+    title: item.title,
+    summary: item.oneSentenceSummary || item.summary || "",
+    content: item.plainTextContent || item.content || "",
+    category: item.category || "未分类",
+    date: item.publishDate || item.date || "",
+    imageUrl: item.conceptImageUrl || item.imageUrl || "",
+    likesCount: item.likes || 0,
+    translatedAbstract: item.translatedAbstract,
+    authors: item.authors || [],
+    citedByCount: item.citedByCount,
+    doi: item.doi,
+    explainers: item.explainers,
+    sourceJournal: item.sourceJournal,
+    sourceLink: item.sourceLink,
+    paperTitle: item.paperTitle,
+    discoverySource: item.discoverySource,
+    scholarLink: item.scholarLink,
+    isOpenAccess: item.isOpenAccess,
+    publicationYear: item.publicationYear,
+    comments: [],
+  }));
 }
 
 export async function publishWorkbenchNews(payload: {
@@ -119,6 +144,8 @@ export async function publishWorkbenchNews(payload: {
     sourceJournal: item.sourceJournal,
     sourceLink: item.sourceLink,
     paperTitle: item.paperTitle,
+    discoverySource: item.discoverySource,
+    scholarLink: item.scholarLink,
     isOpenAccess: item.isOpenAccess,
     publicationYear: item.publicationYear,
     comments: [],

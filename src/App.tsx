@@ -1320,53 +1320,53 @@ export default function App() {
         </div>
       ) : (
         <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-5" ref={reportRef}>
-          <div className="lg:col-span-3 space-y-4">
-            <section className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <aside className="lg:col-span-3 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-1 space-y-3">
+            <section className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+              <h2 className="text-base font-semibold mb-2 flex items-center gap-2">
                 <Upload size={20} className="text-emerald-600" />
                 工作台控制台
               </h2>
-              <p className="text-sm text-gray-500 mb-4">
-                先把数据和研究问题准备好，再进入模型分析；这样更符合大多数用户“先确认数据、再看结果、最后导出”的使用习惯。
+              <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                只保留入口和导航；详细结果在右侧工作区展开。
               </p>
               <div
                 className={cn(
-                  "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer group",
+                  "border-2 border-dashed rounded-xl p-4 text-center transition-all cursor-pointer group",
                   file ? "border-emerald-200 bg-emerald-50/30" : "border-gray-200 hover:border-emerald-400 hover:bg-gray-50"
                 )}
                 onClick={() => document.getElementById('file-upload')?.click()}
               >
                 <input id="file-upload" type="file" className="hidden" accept=".csv" onChange={handleFileUpload} />
-                <div className="bg-emerald-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                  <FileText className="text-emerald-600" />
+                <div className="bg-emerald-100 w-9 h-9 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
+                  <FileText className="text-emerald-600" size={18} />
                 </div>
                 <p className="text-sm font-medium text-gray-900">
                   {file ? file.name : "点击或拖拽上传 CSV 文件"}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">支持连续型、二分类、时间序列等多种 CSV 数据结构</p>
+                <p className="text-[11px] text-gray-500 mt-1">CSV / 示例数据均可</p>
               </div>
 
-              <div className="mt-4 space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">一键预览完整功能板块</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="mt-3 space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">示例数据</p>
+                <div className="grid grid-cols-2 gap-2">
                   {SAMPLE_DATASETS.map((dataset) => (
                     <button
                       key={dataset.id}
                       onClick={() => handleLoadSampleDataset(dataset.id)}
-                      className="text-left rounded-xl border border-gray-200 bg-gray-50 hover:bg-white hover:border-emerald-200 transition-all px-4 py-3"
+                      className="text-left rounded-xl border border-gray-200 bg-gray-50 hover:bg-white hover:border-emerald-200 transition-all px-3 py-2"
                     >
-                      <p className="text-sm font-semibold text-gray-900">{dataset.title}</p>
-                      <p className="text-xs text-gray-500 mt-1 leading-relaxed">{dataset.description}</p>
+                      <p className="text-xs font-semibold text-gray-900">{dataset.title}</p>
+                      <p className="sr-only">{dataset.description}</p>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">分析历史</p>
-                    <p className="text-sm text-gray-700 mt-1">已保存 {historyEntries.length} 条分析，可随时重新打开或复制。</p>
+                    <p className="text-xs text-gray-700 mt-1">已保存 {historyEntries.length} 条分析。</p>
                   </div>
                   <button
                     onClick={() => {
@@ -1447,21 +1447,18 @@ export default function App() {
               )}
             </section>
 
-            <section className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <section className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+              <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
                 <BarChart2 size={20} className="text-emerald-600" />
                 阶段导航
               </h2>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                处理流程收成了 4 个轻量步骤，当前阶段之外的内容默认折叠，首屏只强调你下一步最该做什么。
-              </p>
-              <div className="mt-4 grid grid-cols-1 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 {WORKBENCH_SECTIONS.map((section) => (
                   <button
                     key={section.id}
                     onClick={() => navigateToWorkbenchSection(section.id)}
                     className={cn(
-                      "w-full rounded-2xl border px-4 py-3 text-left transition-all",
+                      "w-full rounded-2xl border px-3 py-2.5 text-left transition-all",
                       activeWorkbenchSection === section.id
                         ? "border-emerald-300 bg-emerald-50"
                         : "border-gray-200 hover:border-emerald-200 bg-white"
@@ -1471,18 +1468,18 @@ export default function App() {
                       <p className="text-sm font-semibold text-gray-900">{section.shortTitle}</p>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{section.compactHint}</span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">{section.description}</p>
+                    <p className="sr-only">{section.description}</p>
                   </button>
                 ))}
               </div>
-              <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">使用优先级</p>
-                <div className="space-y-2">
+              <details className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-widest text-gray-400">使用优先级</summary>
+                <div className="mt-2 space-y-2">
                   {WORKBENCH_PRIORITY_NOTES.map((note) => (
                     <p key={note} className="text-xs text-gray-600 leading-relaxed">{note}</p>
                   ))}
                 </div>
-              </div>
+              </details>
             </section>
 
             <section className={cn(
@@ -1905,7 +1902,7 @@ export default function App() {
                 )}
               </div>
             </section>
-          </div>
+          </aside>
 
           <div className="lg:col-span-9 space-y-5">
             {workbenchPanel === 'workspace' && (

@@ -42,3 +42,56 @@ test('README links to the user system design document', () => {
   assert.match(readme, /docs\/user-system-design\.md/);
   assert.match(readme, /角色权限矩阵/);
 });
+
+import {
+  canUserPerform,
+  CORE_USER_JOURNEY,
+  DATA_OWNERSHIP_RULES,
+  getTeamUserRoleCapabilities,
+  getTeamUserRoleLabel,
+  mapCollaborationRoleToTeamUserRole,
+} from '../src/shared/userPermissions';
+
+test('team collaboration role model exposes the four scheme B roles', () => {
+  assert.equal(getTeamUserRoleLabel('public-user'), '普通用户');
+  assert.equal(getTeamUserRoleLabel('researcher'), '研究员');
+  assert.equal(getTeamUserRoleLabel('team-admin'), '团队管理员');
+  assert.equal(getTeamUserRoleLabel('auditor'), '审核员');
+
+  assert.deepEqual(mapCollaborationRoleToTeamUserRole('lead'), 'team-admin');
+  assert.deepEqual(mapCollaborationRoleToTeamUserRole('analyst'), 'researcher');
+  assert.deepEqual(mapCollaborationRoleToTeamUserRole('reviewer'), 'auditor');
+});
+
+test('team collaboration permissions enforce upload, raw data, export and publish guardrails', () => {
+  assert.equal(canUserPerform('public-user', 'upload-data').allowed, false);
+  assert.equal(canUserPerform('researcher', 'upload-data').allowed, true);
+
+  assert.equal(canUserPerform('researcher', 'view-raw-data', { dataScope: 'project' }).allowed, false);
+  assert.equal(canUserPerform('researcher', 'view-raw-data', { dataScope: 'project', isProjectMember: true }).allowed, true);
+  assert.equal(canUserPerform('auditor', 'view-raw-data', { dataScope: 'team' }).allowed, false);
+  assert.equal(canUserPerform('auditor', 'view-raw-data', { dataScope: 'team', auditPurpose: true }).allowed, true);
+
+  const highRiskExport = canUserPerform('researcher', 'export-report', { riskLevel: 'high' });
+  assert.equal(highRiskExport.allowed, false);
+  assert.match(highRiskExport.reason, /审核员/);
+  assert.equal(canUserPerform('auditor', 'export-report', { riskLevel: 'high' }).allowed, true);
+
+  assert.equal(canUserPerform('team-admin', 'review-content-publish').allowed, false);
+  assert.equal(canUserPerform('auditor', 'review-content-publish').allowed, true);
+});
+
+test('team collaboration model documents ownership rules and journey permissions as executable data', () => {
+  assert.deepEqual(Object.keys(DATA_OWNERSHIP_RULES).sort(), ['personal', 'project', 'public', 'team']);
+  assert.ok(DATA_OWNERSHIP_RULES.team.some((rule) => rule.includes('审计')));
+
+  const journeySteps = CORE_USER_JOURNEY.map((item) => item.step);
+  assert.ok(journeySteps.includes('浏览环境健康资讯'));
+  assert.ok(journeySteps.includes('进入协作研究室'));
+  assert.ok(journeySteps.includes('审核并沉淀分析历史'));
+
+  const researcherCapabilities = getTeamUserRoleCapabilities('researcher');
+  assert.ok(researcherCapabilities.includes('upload-data'));
+  assert.ok(researcherCapabilities.includes('generate-report'));
+  assert.equal(researcherCapabilities.includes('review-content-publish'), false);
+});

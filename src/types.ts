@@ -134,6 +134,8 @@ export interface AnalysisTrace {
   auditTrail: AuditLogEntry[];
 }
 
+export type TeamUserRole = "public-user" | "researcher" | "team-admin" | "auditor";
+
 export type CollaborationRole = "lead" | "analyst" | "reviewer";
 
 export interface CollaborationMember {

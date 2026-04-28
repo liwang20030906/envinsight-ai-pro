@@ -1323,135 +1323,12 @@ export default function App() {
           <aside className="lg:col-span-3 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-1 space-y-3">
             <section className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
               <h2 className="text-base font-semibold mb-2 flex items-center gap-2">
-                <Upload size={20} className="text-emerald-600" />
-                工作台控制台
+                <BarChart2 size={20} className="text-emerald-600" />
+                工作台菜单
               </h2>
               <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-                只保留入口和导航；详细结果在右侧工作区展开。
+                左侧只保留菜单入口；点击后在右侧主工作区切换对应内容。
               </p>
-              <div
-                className={cn(
-                  "border-2 border-dashed rounded-xl p-4 text-center transition-all cursor-pointer group",
-                  file ? "border-emerald-200 bg-emerald-50/30" : "border-gray-200 hover:border-emerald-400 hover:bg-gray-50"
-                )}
-                onClick={() => document.getElementById('file-upload')?.click()}
-              >
-                <input id="file-upload" type="file" className="hidden" accept=".csv" onChange={handleFileUpload} />
-                <div className="bg-emerald-100 w-9 h-9 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
-                  <FileText className="text-emerald-600" size={18} />
-                </div>
-                <p className="text-sm font-medium text-gray-900">
-                  {file ? file.name : "点击或拖拽上传 CSV 文件"}
-                </p>
-                <p className="text-[11px] text-gray-500 mt-1">CSV / 示例数据均可</p>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">示例数据</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {SAMPLE_DATASETS.map((dataset) => (
-                    <button
-                      key={dataset.id}
-                      onClick={() => handleLoadSampleDataset(dataset.id)}
-                      className="text-left rounded-xl border border-gray-200 bg-gray-50 hover:bg-white hover:border-emerald-200 transition-all px-3 py-2"
-                    >
-                      <p className="text-xs font-semibold text-gray-900">{dataset.title}</p>
-                      <p className="sr-only">{dataset.description}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">分析历史</p>
-                    <p className="text-xs text-gray-700 mt-1">已保存 {historyEntries.length} 条分析。</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setWorkbenchPanel('history');
-                      setSelectedHistoryId((prev) => prev || historyEntries[0]?.id || null);
-                    }}
-                    className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-bold text-gray-600 hover:border-emerald-200 hover:text-emerald-700"
-                  >
-                    查看历史
-                  </button>
-                </div>
-              </div>
-
-              {importedLead && (
-                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">资讯 → 科研工作台</p>
-                      <h3 className="text-sm font-bold text-gray-900 mt-1">{importedLead.title}</h3>
-                      <p className="text-xs text-gray-600 mt-2 leading-relaxed">{importedLead.researchQuestion}</p>
-                    </div>
-                    <button
-                      onClick={clearImportedLead}
-                      className="text-xs font-bold text-gray-400 hover:text-gray-700"
-                    >
-                      清除
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
-                      推荐样本 {importedLead.suggestedDataset}
-                    </span>
-                    {importedLead.isOpenAccess && (
-                      <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
-                        开放获取
-                      </span>
-                    )}
-                    {importedLead.citedByCount != null && (
-                      <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
-                        被引 {importedLead.citedByCount}
-                      </span>
-                    )}
-                  </div>
-
-                  <KeyValueList title="建议先准备的数据" items={importedLead.dataNeeds.slice(0, 3)} />
-                  <KeyValueList title="推荐模型路线" items={importedLead.suggestedModels} />
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      onClick={handleRunImportedLeadSample}
-                      className="px-4 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-black transition-all"
-                    >
-                      跑推荐示例数据
-                    </button>
-                    <button
-                      onClick={handleSyncLeadToCollaboration}
-                      className="px-4 py-2.5 rounded-xl border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-white transition-all"
-                    >
-                      同步到协作研究室
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-3">
-                  <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16} />
-                  <p className="text-xs text-red-700">{error}</p>
-                </div>
-              )}
-
-              {loading && (
-                <div className="mt-4 flex items-center justify-center gap-2 text-emerald-600 text-sm font-medium">
-                  <RefreshCw className="animate-spin" size={16} />
-                  正在进行数据体检、模型对比与分析生成...
-                </div>
-              )}
-            </section>
-
-            <section className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-              <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
-                <BarChart2 size={20} className="text-emerald-600" />
-                阶段导航
-              </h2>
               <div className="grid grid-cols-1 gap-2">
                 {WORKBENCH_SECTIONS.map((section) => (
                   <button
@@ -1459,7 +1336,7 @@ export default function App() {
                     onClick={() => navigateToWorkbenchSection(section.id)}
                     className={cn(
                       "w-full rounded-2xl border px-3 py-2.5 text-left transition-all",
-                      activeWorkbenchSection === section.id
+                      activeWorkbenchSection === section.id && workbenchPanel === 'workspace'
                         ? "border-emerald-300 bg-emerald-50"
                         : "border-gray-200 hover:border-emerald-200 bg-white"
                     )}
@@ -1471,6 +1348,24 @@ export default function App() {
                     <p className="sr-only">{section.description}</p>
                   </button>
                 ))}
+                <button
+                  onClick={() => {
+                    setWorkbenchPanel('history');
+                    setSelectedHistoryId((prev) => prev || historyEntries[0]?.id || null);
+                  }}
+                  className={cn(
+                    "w-full rounded-2xl border px-3 py-2.5 text-left transition-all",
+                    workbenchPanel === 'history'
+                      ? "border-emerald-300 bg-emerald-50"
+                      : "border-gray-200 hover:border-emerald-200 bg-white"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-gray-900">历史记录</p>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{historyEntries.length} 条</span>
+                  </div>
+                  <p className="sr-only">查看和恢复历史分析快照</p>
+                </button>
               </div>
               <details className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                 <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-widest text-gray-400">使用优先级</summary>
@@ -1482,186 +1377,377 @@ export default function App() {
               </details>
             </section>
 
-            <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
-              workbenchPanel !== 'workspace' && "hidden",
-              activeWorkbenchSection !== 'prepare' && "hidden",
-              !complianceReview && "opacity-70"
-            )}>
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <ShieldAlert size={20} className="text-emerald-600" />
-                合规预审与审计
-              </h2>
-              {complianceReview ? (
-                <div className="space-y-4">
-                  <div className={cn(
-                    "rounded-xl border px-4 py-3",
-                    complianceReview.status === 'blocked'
-                      ? "bg-red-50 border-red-200"
-                      : complianceReview.status === 'warning'
-                        ? "bg-amber-50 border-amber-200"
-                        : "bg-emerald-50 border-emerald-200"
-                  )}>
-                    <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">审查结论</p>
-                    <p className="text-sm font-semibold text-gray-900">{complianceReview.summary}</p>
+          </aside>
+
+          <div className="lg:col-span-9 space-y-5">
+            {workbenchPanel === 'workspace' && (
+              <StickyWorkbenchStepBar
+                activeSection={activeWorkbenchSection}
+                onJump={navigateToWorkbenchSection}
+              />
+            )}
+
+            <section className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-emerald-600">Workbench Flow</p>
+                  <h2 className="text-xl font-bold text-gray-900 mt-1">科研工作台</h2>
+                  <p className="text-sm text-gray-600 mt-2 max-w-3xl leading-relaxed">
+                    顶部步骤条会固定在页面上方，点击任一步都能直接跳到对应环节。
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setWorkbenchPanel('workspace')}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-xs font-bold border transition-all",
+                        workbenchPanel === 'workspace'
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-emerald-200"
+                      )}
+                    >
+                      当前工作区
+                    </button>
+                    <button
+                      onClick={() => {
+                        setWorkbenchPanel('history');
+                        setSelectedHistoryId((prev) => prev || historyEntries[0]?.id || null);
+                      }}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-xs font-bold border transition-all",
+                        workbenchPanel === 'history'
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-emerald-200"
+                      )}
+                    >
+                      历史记录
+                    </button>
                   </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 min-w-0">
+                  <StatusChip title="数据准备" value={importedLead || file ? '已开始' : '待开始'} tone={importedLead || file ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('prepare')} />
+                  <StatusChip title="模型分析" value={result ? '已生成' : '待分析'} tone={result ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('analyze')} />
+                  <StatusChip title="报告产出" value={report || paperDraft ? '已生成' : '待生成'} tone={report || paperDraft ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('outputs')} />
+                  <StatusChip title="协作留痕" value={collabRoom ? '已接入' : '未接入'} tone={collabRoom ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('collaborate')} />
+                </div>
+              </div>
+            </section>
+
+            {workbenchPanel === 'history' && (
+              <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
                   <div>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">风险发现</p>
-                    <div className="space-y-2">
-                      {complianceReview.findings.length > 0 ? complianceReview.findings.map((finding, index) => (
-                        <div key={`${finding.field}-${index}`} className="rounded-lg border border-gray-200 px-3 py-2">
-                          <p className="text-sm font-medium text-gray-900">{finding.field}</p>
-                          <p className="text-xs text-gray-500 mt-1">{finding.reason}</p>
-                        </div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">分析历史中心</p>
+                    <h3 className="text-2xl font-bold text-gray-900 mt-1">回看之前做过的分析，并一键继续推进</h3>
+                    <p className="text-sm text-gray-600 mt-2 max-w-3xl leading-relaxed">
+                      历史里会保存分析结果、AI 解读、报告和论文初稿快照。你可以重新打开旧分析，也可以复制成一份新版本继续做。
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 min-w-[220px]">
+                    <StatusChip title="总记录" value={`${historyEntries.length} 条`} tone={historyEntries.length ? 'success' : 'muted'} />
+                    <StatusChip title="当前来源" value={currentHistoryId ? '来自历史快照' : '当前实时分析'} tone={currentHistoryId ? 'success' : 'muted'} />
+                  </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-6">
+                  <div className="xl:col-span-1 space-y-4">
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 block">搜索历史</label>
+                      <div className="relative">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          value={historyQuery}
+                          onChange={(e) => setHistoryQuery(e.target.value)}
+                          placeholder="按标题、模型、变量搜索"
+                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-sm focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(['all', 'regression', 'classification', 'time-series', 'mixed'] as AnalysisHistoryShapeFilter[]).map((shape) => (
+                          <button
+                            key={shape}
+                            onClick={() => setHistoryShapeFilter(shape)}
+                            className={cn(
+                              "px-3 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all",
+                              historyShapeFilter === shape
+                                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                : "border-gray-200 bg-white text-gray-500 hover:border-emerald-200"
+                            )}
+                          >
+                            {shape === 'all' ? '全部' : formatHistoryShapeLabel(shape)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 max-h-[680px] overflow-y-auto pr-1">
+                      {filteredHistoryEntries.length > 0 ? filteredHistoryEntries.map((entry) => (
+                        <button
+                          key={entry.id}
+                          onClick={() => setSelectedHistoryId(entry.id)}
+                          className={cn(
+                            "w-full text-left rounded-2xl border p-4 transition-all",
+                            selectedHistoryEntry?.id === entry.id
+                              ? "border-emerald-300 bg-emerald-50"
+                              : "border-gray-200 bg-white hover:border-emerald-200"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{entry.title}</p>
+                              <p className="text-xs text-gray-500 mt-1">{entry.sourceLabel}</p>
+                            </div>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                              {formatHistoryShapeLabel(entry.datasetShape)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-3 leading-relaxed line-clamp-2">{entry.headline}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {entry.hasReport && <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">报告</span>}
+                            {entry.hasPaperDraft && <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">论文</span>}
+                            {entry.hasCollaboration && <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">协作</span>}
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-3">{new Date(entry.updatedAt).toLocaleString()}</p>
+                        </button>
                       )) : (
-                        <p className="text-sm text-gray-500">当前未检测到高风险身份字段。</p>
+                        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
+                          <p className="text-sm text-gray-500">还没有匹配到历史记录，先跑一次分析吧。</p>
+                        </div>
                       )}
                     </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">处理建议</p>
-                    <ul className="space-y-2 text-sm text-gray-600">
-                      {complianceReview.suggestions.map((suggestion) => (
-                        <li key={suggestion} className="rounded-lg bg-gray-50 px-3 py-2 border border-gray-100">
-                          {suggestion}
-                        </li>
-                      ))}
-                    </ul>
+
+                  <div className="xl:col-span-2">
+                    {selectedHistoryEntry ? (
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 space-y-5">
+                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">历史详情</p>
+                            <h4 className="text-2xl font-bold text-gray-900 mt-1">{selectedHistoryEntry.title}</h4>
+                            <p className="text-sm text-gray-600 mt-2 leading-relaxed">{selectedHistoryEntry.headline}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => reopenHistoryEntry(selectedHistoryEntry)}
+                              className="px-4 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-black"
+                            >
+                              重新打开
+                            </button>
+                            <button
+                              onClick={() => reopenHistoryEntry(selectedHistoryEntry, true)}
+                              className="px-4 py-2.5 rounded-xl border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-white"
+                            >
+                              复制为新分析
+                            </button>
+                            <button
+                              onClick={() => handleDeleteHistoryEntry(selectedHistoryEntry.id)}
+                              className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-500 hover:border-red-200 hover:text-red-600"
+                            >
+                              删除
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                          <StatusChip title="分析类型" value={formatHistoryShapeLabel(selectedHistoryEntry.datasetShape)} tone="success" />
+                          <StatusChip title="推荐模型" value={selectedHistoryEntry.bestModelName || '未记录'} tone="success" />
+                          <StatusChip title="创建时间" value={new Date(selectedHistoryEntry.createdAt).toLocaleDateString()} tone="muted" />
+                          <StatusChip title="最近更新" value={new Date(selectedHistoryEntry.updatedAt).toLocaleDateString()} tone="muted" />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">变量与结果</p>
+                            <div className="space-y-2 text-sm text-gray-700">
+                              <p>自变量：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.columns.x}</span></p>
+                              <p>目标变量：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.columns.y}</span></p>
+                              <p>拟合度：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.summary.rSquared.toFixed(3)}</span></p>
+                              <p>样本量：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.summary.n}</span></p>
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">已保存快照</p>
+                            <div className="space-y-2 text-sm text-gray-700">
+                              <p>AI 解读：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.aiResponse ? '已保存' : '未保存'}</span></p>
+                              <p>结构化报告：<span className="font-semibold text-gray-900">{selectedHistoryEntry.hasReport ? '已生成' : '未生成'}</span></p>
+                              <p>论文初稿：<span className="font-semibold text-gray-900">{selectedHistoryEntry.hasPaperDraft ? '已生成' : '未生成'}</span></p>
+                              <p>协作痕迹：<span className="font-semibold text-gray-900">{selectedHistoryEntry.hasCollaboration ? '已接入' : '未接入'}</span></p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {selectedHistoryEntry.snapshot.aiResponse && (
+                          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">AI 解读快照</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                              {selectedHistoryEntry.snapshot.aiResponse.slice(0, 1200)}
+                              {selectedHistoryEntry.snapshot.aiResponse.length > 1200 ? '...' : ''}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-16 text-center">
+                        <p className="text-sm text-gray-500">选择一条历史记录，就可以查看详情并恢复到工作台。</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ) : (
-                <p className="text-sm text-gray-500">上传数据后，系统会先执行字段级风险审查并留下审计轨迹。</p>
-              )}
-            </section>
+              </section>
+            )}
 
             <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
+              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm",
               workbenchPanel !== 'workspace' && "hidden",
-              activeWorkbenchSection !== 'prepare' && "hidden",
-              !complianceGuidance && "opacity-70"
-            )}>
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Info size={20} className="text-emerald-600" />
-                AI 合规解决方案
-              </h2>
-              {complianceGuidance ? (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
-                    <p className="text-sm text-emerald-900 leading-relaxed">{complianceGuidance.summary}</p>
-                  </div>
-                  <KeyValueList title="数据脱敏方案" items={complianceGuidance.desensitizationPlan} />
-                  <KeyValueList title="AI 审查工作流" items={complianceGuidance.reviewWorkflow} />
-                  <KeyValueList title="版权核查清单" items={complianceGuidance.copyrightChecklist} />
-                  <KeyValueList title="发布前守则" items={complianceGuidance.publishGuardrails} />
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">完成预审后，AI 会自动生成数据脱敏、版权核查和发布前审查工作流。</p>
-              )}
-            </section>
-
-            <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
-              workbenchPanel !== 'workspace' && "hidden",
-              activeWorkbenchSection !== 'analyze' && "hidden",
-              !result && "opacity-50 pointer-events-none"
-            )}>
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <RefreshCw size={20} className="text-emerald-600" />
-                情景模拟
-              </h2>
-              <div className="space-y-6">
+              activeWorkbenchSection !== 'prepare' && "hidden"
+            )} id={getWorkbenchSectionAnchorId('prepare')} ref={(node) => { workbenchSectionRefs.current.prepare = node; }}>
+              <div className="flex items-center justify-between gap-4 mb-5">
                 <div>
-                  <div className="flex justify-between mb-2">
-                    <label className="text-sm font-medium text-gray-700">核心自变量 ({result?.columns.x || '待分析'}) 调整</label>
-                    <span className={cn(
-                      "text-sm font-bold",
-                      pm25Delta > 0 ? "text-red-600" : pm25Delta < 0 ? "text-emerald-600" : "text-gray-500"
-                    )}>
-                      {pm25Delta > 0 ? '+' : ''}{pm25Delta}%
-                    </span>
+                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">当前阶段</p>
+                  <h3 className="text-xl font-bold text-gray-900 mt-1">数据准备</h3>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-gray-100 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                  先确认输入，再开始分析
+                </span>
+              </div>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-5">
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">数据入口</p>
+                  <div
+                    className={cn(
+                      "border-2 border-dashed rounded-xl p-5 text-center transition-all cursor-pointer group bg-white",
+                      file ? "border-emerald-200" : "border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/30"
+                    )}
+                    onClick={() => document.getElementById('file-upload')?.click()}
+                  >
+                    <input id="file-upload" type="file" className="hidden" accept=".csv" onChange={handleFileUpload} />
+                    <div className="bg-emerald-100 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
+                      <FileText className="text-emerald-600" size={18} />
+                    </div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {file ? file.name : "点击或拖拽上传 CSV 文件"}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">CSV / 示例数据均可，上传后先进入合规预审。</p>
                   </div>
-                  <input
-                    type="range"
-                    min="-50"
-                    max="50"
-                    value={pm25Delta}
-                    onChange={(e) => setPm25Delta(parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-                  />
-                  <div className="flex justify-between mt-1 text-[10px] text-gray-400 uppercase font-bold tracking-tighter">
-                    <span>大幅改善 (-50%)</span>
-                    <span>无干预</span>
-                    <span>大幅恶化 (+50%)</span>
+
+                  <div className="mt-4 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">示例数据</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {SAMPLE_DATASETS.map((dataset) => (
+                        <button
+                          key={dataset.id}
+                          onClick={() => handleLoadSampleDataset(dataset.id)}
+                          className="text-left rounded-xl border border-gray-200 bg-white hover:border-emerald-200 transition-all px-3 py-2"
+                        >
+                          <p className="text-xs font-semibold text-gray-900">{dataset.title}</p>
+                          <p className="text-[11px] text-gray-500 mt-1 line-clamp-2">{dataset.description}</p>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                <button
-                  onClick={handleWhatIf}
-                  disabled={whatIfLoading || result?.modelComparison?.datasetShape !== 'regression'}
-                  className="w-full bg-gray-900 hover:bg-black text-white py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-                >
-                  {whatIfLoading ? <RefreshCw className="animate-spin" size={16} /> : <Search size={16} />}
-                  运行模拟预测
-                </button>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">研究线索与状态</p>
+                  {importedLead ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">资讯 → 科研工作台</p>
+                          <h3 className="text-sm font-bold text-gray-900 mt-1">{importedLead.title}</h3>
+                          <p className="text-xs text-gray-600 mt-2 leading-relaxed">{importedLead.researchQuestion}</p>
+                        </div>
+                        <button
+                          onClick={clearImportedLead}
+                          className="text-xs font-bold text-gray-400 hover:text-gray-700"
+                        >
+                          清除
+                        </button>
+                      </div>
 
-                {result?.modelComparison?.datasetShape !== 'regression' && (
-                  <p className="text-xs text-gray-500">
-                    当前数据推荐的默认路线不是回归分析，情景模拟仅在回归型数据上启用。
-                  </p>
-                )}
+                      <div className="flex flex-wrap gap-2">
+                        <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
+                          推荐样本 {importedLead.suggestedDataset}
+                        </span>
+                        {importedLead.isOpenAccess && (
+                          <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
+                            开放获取
+                          </span>
+                        )}
+                        {importedLead.citedByCount != null && (
+                          <span className="px-2 py-1 rounded-full bg-white border border-emerald-100 text-[10px] font-bold text-emerald-700">
+                            被引 {importedLead.citedByCount}
+                          </span>
+                        )}
+                      </div>
 
-                {whatIfResponse && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl"
-                  >
-                    <p className="text-xs text-emerald-900 leading-relaxed whitespace-pre-wrap">
-                      {whatIfResponse}
-                    </p>
-                  </motion.div>
-                )}
+                      <KeyValueList title="建议先准备的数据" items={importedLead.dataNeeds.slice(0, 3)} />
+                      <KeyValueList title="推荐模型路线" items={importedLead.suggestedModels} />
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          onClick={handleRunImportedLeadSample}
+                          className="px-4 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-black transition-all"
+                        >
+                          跑推荐示例数据
+                        </button>
+                        <button
+                          onClick={handleSyncLeadToCollaboration}
+                          className="px-4 py-2.5 rounded-xl border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-white transition-all"
+                        >
+                          同步到协作研究室
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3 text-sm text-gray-700">
+                      <p>数据文件：<span className="font-semibold text-gray-900">{currentFileLabel}</span></p>
+                      <p>研究线索：<span className="font-semibold text-gray-900">尚未导入论文</span></p>
+                      <p>合规预审：<span className="font-semibold text-gray-900">{complianceReview?.summary || '尚未执行'}</span></p>
+                      <p>历史记录：<span className="font-semibold text-gray-900">已保存 {historyEntries.length} 条分析</span></p>
+                    </div>
+                  )}
+
+                  {error && (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-3">
+                      <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16} />
+                      <p className="text-xs text-red-700">{error}</p>
+                    </div>
+                  )}
+
+                  {loading && (
+                    <div className="mt-4 flex items-center justify-center gap-2 text-emerald-600 text-sm font-medium">
+                      <RefreshCw className="animate-spin" size={16} />
+                      正在进行数据体检、模型对比与分析生成...
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">推荐使用顺序</p>
+                  <ol className="space-y-3 text-sm text-gray-700">
+                    <li>1. 先上传 CSV 或导入一篇真实论文，明确这次分析要回答什么问题。</li>
+                    <li>2. 看合规预审，确认有没有敏感字段、版权风险或样本结构问题。</li>
+                    <li>3. 预审通过后再进入“模型分析”，不要一开始就直接看 AI 解读。</li>
+                  </ol>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">当前输入状态</p>
+                  <div className="space-y-3 text-sm text-gray-700">
+                    <p>数据文件：<span className="font-semibold text-gray-900">{currentFileLabel}</span></p>
+                    <p>研究线索：<span className="font-semibold text-gray-900">{importedLead?.title || '尚未导入论文'}</span></p>
+                    <p>合规预审：<span className="font-semibold text-gray-900">{complianceReview?.summary || '尚未执行'}</span></p>
+                  </div>
+                </div>
               </div>
             </section>
 
-            <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
-              workbenchPanel !== 'workspace' && "hidden",
-              activeWorkbenchSection !== 'outputs' && "hidden",
-              !result && "opacity-50 pointer-events-none"
-            )}>
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <FileText size={20} className="text-emerald-600" />
-                报告与论文初稿
-              </h2>
-              <div className="space-y-3">
-                <button
-                  onClick={handleGenerateReport}
-                  disabled={reportLoading}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-                >
-                  {reportLoading ? <RefreshCw className="animate-spin" size={16} /> : <FileText size={16} />}
-                  {reportLoading ? '正在生成报告...' : '生成结构化报告'}
-                </button>
-                <button
-                  onClick={handleGeneratePaperDraft}
-                  disabled={paperLoading}
-                  className="w-full bg-gray-900 hover:bg-black text-white py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-                >
-                  {paperLoading ? <RefreshCw className="animate-spin" size={16} /> : <ChevronRight size={16} />}
-                  {paperLoading ? '正在生成初稿...' : '生成论文初稿'}
-                </button>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  输出将附带证据链、局限说明与免责声明，适合用于科研讨论和初稿整理。
-                </p>
-              </div>
-            </section>
 
-            <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm",
-              workbenchPanel !== 'workspace' && "hidden",
-              activeWorkbenchSection !== 'collaborate' && "hidden"
-            )}>
+            <section
+              className={cn("bg-white rounded-2xl border border-gray-200 p-6 shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'collaborate' && "hidden")}
+              id={getWorkbenchSectionAnchorId('collaborate')}
+              ref={(node) => { workbenchSectionRefs.current.collaborate = node; }}
+            >
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <MessageSquare size={20} className="text-emerald-600" />
                 多人协作研究室
@@ -1902,257 +1988,84 @@ export default function App() {
                 )}
               </div>
             </section>
-          </aside>
-
-          <div className="lg:col-span-9 space-y-5">
-            {workbenchPanel === 'workspace' && (
-              <StickyWorkbenchStepBar
-                activeSection={activeWorkbenchSection}
-                onJump={navigateToWorkbenchSection}
-              />
-            )}
-
-            <section className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-emerald-600">Workbench Flow</p>
-                  <h2 className="text-xl font-bold text-gray-900 mt-1">科研工作台</h2>
-                  <p className="text-sm text-gray-600 mt-2 max-w-3xl leading-relaxed">
-                    顶部步骤条会固定在页面上方，点击任一步都能直接跳到对应环节。
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      onClick={() => setWorkbenchPanel('workspace')}
-                      className={cn(
-                        "px-3 py-2 rounded-xl text-xs font-bold border transition-all",
-                        workbenchPanel === 'workspace'
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                          : "border-gray-200 bg-white text-gray-600 hover:border-emerald-200"
-                      )}
-                    >
-                      当前工作区
-                    </button>
-                    <button
-                      onClick={() => {
-                        setWorkbenchPanel('history');
-                        setSelectedHistoryId((prev) => prev || historyEntries[0]?.id || null);
-                      }}
-                      className={cn(
-                        "px-3 py-2 rounded-xl text-xs font-bold border transition-all",
-                        workbenchPanel === 'history'
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                          : "border-gray-200 bg-white text-gray-600 hover:border-emerald-200"
-                      )}
-                    >
-                      历史记录
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 min-w-0">
-                  <StatusChip title="数据准备" value={importedLead || file ? '已开始' : '待开始'} tone={importedLead || file ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('prepare')} />
-                  <StatusChip title="模型分析" value={result ? '已生成' : '待分析'} tone={result ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('analyze')} />
-                  <StatusChip title="报告产出" value={report || paperDraft ? '已生成' : '待生成'} tone={report || paperDraft ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('outputs')} />
-                  <StatusChip title="协作留痕" value={collabRoom ? '已接入' : '未接入'} tone={collabRoom ? 'success' : 'muted'} onClick={() => navigateToWorkbenchSection('collaborate')} />
-                </div>
-              </div>
-            </section>
-
-            {workbenchPanel === 'history' && (
-              <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">分析历史中心</p>
-                    <h3 className="text-2xl font-bold text-gray-900 mt-1">回看之前做过的分析，并一键继续推进</h3>
-                    <p className="text-sm text-gray-600 mt-2 max-w-3xl leading-relaxed">
-                      历史里会保存分析结果、AI 解读、报告和论文初稿快照。你可以重新打开旧分析，也可以复制成一份新版本继续做。
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 min-w-[220px]">
-                    <StatusChip title="总记录" value={`${historyEntries.length} 条`} tone={historyEntries.length ? 'success' : 'muted'} />
-                    <StatusChip title="当前来源" value={currentHistoryId ? '来自历史快照' : '当前实时分析'} tone={currentHistoryId ? 'success' : 'muted'} />
-                  </div>
-                </div>
-
-                <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-6">
-                  <div className="xl:col-span-1 space-y-4">
-                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 block">搜索历史</label>
-                      <div className="relative">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                          value={historyQuery}
-                          onChange={(e) => setHistoryQuery(e.target.value)}
-                          placeholder="按标题、模型、变量搜索"
-                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-sm focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none"
-                        />
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {(['all', 'regression', 'classification', 'time-series', 'mixed'] as AnalysisHistoryShapeFilter[]).map((shape) => (
-                          <button
-                            key={shape}
-                            onClick={() => setHistoryShapeFilter(shape)}
-                            className={cn(
-                              "px-3 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all",
-                              historyShapeFilter === shape
-                                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                                : "border-gray-200 bg-white text-gray-500 hover:border-emerald-200"
-                            )}
-                          >
-                            {shape === 'all' ? '全部' : formatHistoryShapeLabel(shape)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 max-h-[680px] overflow-y-auto pr-1">
-                      {filteredHistoryEntries.length > 0 ? filteredHistoryEntries.map((entry) => (
-                        <button
-                          key={entry.id}
-                          onClick={() => setSelectedHistoryId(entry.id)}
-                          className={cn(
-                            "w-full text-left rounded-2xl border p-4 transition-all",
-                            selectedHistoryEntry?.id === entry.id
-                              ? "border-emerald-300 bg-emerald-50"
-                              : "border-gray-200 bg-white hover:border-emerald-200"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{entry.title}</p>
-                              <p className="text-xs text-gray-500 mt-1">{entry.sourceLabel}</p>
-                            </div>
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                              {formatHistoryShapeLabel(entry.datasetShape)}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 mt-3 leading-relaxed line-clamp-2">{entry.headline}</p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {entry.hasReport && <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">报告</span>}
-                            {entry.hasPaperDraft && <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">论文</span>}
-                            {entry.hasCollaboration && <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">协作</span>}
-                          </div>
-                          <p className="text-[10px] text-gray-400 mt-3">{new Date(entry.updatedAt).toLocaleString()}</p>
-                        </button>
-                      )) : (
-                        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
-                          <p className="text-sm text-gray-500">还没有匹配到历史记录，先跑一次分析吧。</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="xl:col-span-2">
-                    {selectedHistoryEntry ? (
-                      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 space-y-5">
-                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">历史详情</p>
-                            <h4 className="text-2xl font-bold text-gray-900 mt-1">{selectedHistoryEntry.title}</h4>
-                            <p className="text-sm text-gray-600 mt-2 leading-relaxed">{selectedHistoryEntry.headline}</p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              onClick={() => reopenHistoryEntry(selectedHistoryEntry)}
-                              className="px-4 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-black"
-                            >
-                              重新打开
-                            </button>
-                            <button
-                              onClick={() => reopenHistoryEntry(selectedHistoryEntry, true)}
-                              className="px-4 py-2.5 rounded-xl border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-white"
-                            >
-                              复制为新分析
-                            </button>
-                            <button
-                              onClick={() => handleDeleteHistoryEntry(selectedHistoryEntry.id)}
-                              className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-500 hover:border-red-200 hover:text-red-600"
-                            >
-                              删除
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                          <StatusChip title="分析类型" value={formatHistoryShapeLabel(selectedHistoryEntry.datasetShape)} tone="success" />
-                          <StatusChip title="推荐模型" value={selectedHistoryEntry.bestModelName || '未记录'} tone="success" />
-                          <StatusChip title="创建时间" value={new Date(selectedHistoryEntry.createdAt).toLocaleDateString()} tone="muted" />
-                          <StatusChip title="最近更新" value={new Date(selectedHistoryEntry.updatedAt).toLocaleDateString()} tone="muted" />
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">变量与结果</p>
-                            <div className="space-y-2 text-sm text-gray-700">
-                              <p>自变量：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.columns.x}</span></p>
-                              <p>目标变量：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.columns.y}</span></p>
-                              <p>拟合度：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.summary.rSquared.toFixed(3)}</span></p>
-                              <p>样本量：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.result.summary.n}</span></p>
-                            </div>
-                          </div>
-                          <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">已保存快照</p>
-                            <div className="space-y-2 text-sm text-gray-700">
-                              <p>AI 解读：<span className="font-semibold text-gray-900">{selectedHistoryEntry.snapshot.aiResponse ? '已保存' : '未保存'}</span></p>
-                              <p>结构化报告：<span className="font-semibold text-gray-900">{selectedHistoryEntry.hasReport ? '已生成' : '未生成'}</span></p>
-                              <p>论文初稿：<span className="font-semibold text-gray-900">{selectedHistoryEntry.hasPaperDraft ? '已生成' : '未生成'}</span></p>
-                              <p>协作痕迹：<span className="font-semibold text-gray-900">{selectedHistoryEntry.hasCollaboration ? '已接入' : '未接入'}</span></p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {selectedHistoryEntry.snapshot.aiResponse && (
-                          <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">AI 解读快照</p>
-                            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                              {selectedHistoryEntry.snapshot.aiResponse.slice(0, 1200)}
-                              {selectedHistoryEntry.snapshot.aiResponse.length > 1200 ? '...' : ''}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-16 text-center">
-                        <p className="text-sm text-gray-500">选择一条历史记录，就可以查看详情并恢复到工作台。</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </section>
-            )}
 
             <section className={cn(
-              "bg-white rounded-2xl border border-gray-200 p-6 shadow-sm",
+              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
               workbenchPanel !== 'workspace' && "hidden",
-              activeWorkbenchSection !== 'prepare' && "hidden"
-            )} id={getWorkbenchSectionAnchorId('prepare')} ref={(node) => { workbenchSectionRefs.current.prepare = node; }}>
-              <div className="flex items-center justify-between gap-4 mb-5">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">当前阶段</p>
-                  <h3 className="text-xl font-bold text-gray-900 mt-1">数据准备</h3>
-                </div>
-                <span className="px-3 py-1 rounded-full bg-gray-100 text-[10px] font-bold uppercase tracking-widest text-gray-500">
-                  先确认输入，再开始分析
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
-                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">推荐使用顺序</p>
-                  <ol className="space-y-3 text-sm text-gray-700">
-                    <li>1. 先上传 CSV 或导入一篇真实论文，明确这次分析要回答什么问题。</li>
-                    <li>2. 看合规预审，确认有没有敏感字段、版权风险或样本结构问题。</li>
-                    <li>3. 预审通过后再进入“模型分析”，不要一开始就直接看 AI 解读。</li>
-                  </ol>
-                </div>
-                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
-                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">当前输入状态</p>
-                  <div className="space-y-3 text-sm text-gray-700">
-                    <p>数据文件：<span className="font-semibold text-gray-900">{currentFileLabel}</span></p>
-                    <p>研究线索：<span className="font-semibold text-gray-900">{importedLead?.title || '尚未导入论文'}</span></p>
-                    <p>合规预审：<span className="font-semibold text-gray-900">{complianceReview?.summary || '尚未执行'}</span></p>
+              activeWorkbenchSection !== 'prepare' && "hidden",
+              !complianceReview && "opacity-70"
+            )}>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <ShieldAlert size={20} className="text-emerald-600" />
+                合规预审与审计
+              </h2>
+              {complianceReview ? (
+                <div className="space-y-4">
+                  <div className={cn(
+                    "rounded-xl border px-4 py-3",
+                    complianceReview.status === 'blocked'
+                      ? "bg-red-50 border-red-200"
+                      : complianceReview.status === 'warning'
+                        ? "bg-amber-50 border-amber-200"
+                        : "bg-emerald-50 border-emerald-200"
+                  )}>
+                    <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">审查结论</p>
+                    <p className="text-sm font-semibold text-gray-900">{complianceReview.summary}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">风险发现</p>
+                    <div className="space-y-2">
+                      {complianceReview.findings.length > 0 ? complianceReview.findings.map((finding, index) => (
+                        <div key={`${finding.field}-${index}`} className="rounded-lg border border-gray-200 px-3 py-2">
+                          <p className="text-sm font-medium text-gray-900">{finding.field}</p>
+                          <p className="text-xs text-gray-500 mt-1">{finding.reason}</p>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-gray-500">当前未检测到高风险身份字段。</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">处理建议</p>
+                    <ul className="space-y-2 text-sm text-gray-600">
+                      {complianceReview.suggestions.map((suggestion) => (
+                        <li key={suggestion} className="rounded-lg bg-gray-50 px-3 py-2 border border-gray-100">
+                          {suggestion}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <p className="text-sm text-gray-500">上传数据后，系统会先执行字段级风险审查并留下审计轨迹。</p>
+              )}
             </section>
+
+            <section className={cn(
+              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
+              workbenchPanel !== 'workspace' && "hidden",
+              activeWorkbenchSection !== 'prepare' && "hidden",
+              !complianceGuidance && "opacity-70"
+            )}>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Info size={20} className="text-emerald-600" />
+                AI 合规解决方案
+              </h2>
+              {complianceGuidance ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                    <p className="text-sm text-emerald-900 leading-relaxed">{complianceGuidance.summary}</p>
+                  </div>
+                  <KeyValueList title="数据脱敏方案" items={complianceGuidance.desensitizationPlan} />
+                  <KeyValueList title="AI 审查工作流" items={complianceGuidance.reviewWorkflow} />
+                  <KeyValueList title="版权核查清单" items={complianceGuidance.copyrightChecklist} />
+                  <KeyValueList title="发布前守则" items={complianceGuidance.publishGuardrails} />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">完成预审后，AI 会自动生成数据脱敏、版权核查和发布前审查工作流。</p>
+              )}
+            </section>
+
 
             <div
               className={cn("grid grid-cols-1 md:grid-cols-3 gap-4", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'analyze' && "hidden")}
@@ -2199,6 +2112,72 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            <section className={cn(
+              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
+              workbenchPanel !== 'workspace' && "hidden",
+              activeWorkbenchSection !== 'analyze' && "hidden",
+              !result && "opacity-50 pointer-events-none"
+            )}>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <RefreshCw size={20} className="text-emerald-600" />
+                情景模拟
+              </h2>
+              <div className="space-y-6">
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700">核心自变量 ({result?.columns.x || '待分析'}) 调整</label>
+                    <span className={cn(
+                      "text-sm font-bold",
+                      pm25Delta > 0 ? "text-red-600" : pm25Delta < 0 ? "text-emerald-600" : "text-gray-500"
+                    )}>
+                      {pm25Delta > 0 ? '+' : ''}{pm25Delta}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-50"
+                    max="50"
+                    value={pm25Delta}
+                    onChange={(e) => setPm25Delta(parseInt(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                  />
+                  <div className="flex justify-between mt-1 text-[10px] text-gray-400 uppercase font-bold tracking-tighter">
+                    <span>大幅改善 (-50%)</span>
+                    <span>无干预</span>
+                    <span>大幅恶化 (+50%)</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleWhatIf}
+                  disabled={whatIfLoading || result?.modelComparison?.datasetShape !== 'regression'}
+                  className="w-full bg-gray-900 hover:bg-black text-white py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+                >
+                  {whatIfLoading ? <RefreshCw className="animate-spin" size={16} /> : <Search size={16} />}
+                  运行模拟预测
+                </button>
+
+                {result?.modelComparison?.datasetShape !== 'regression' && (
+                  <p className="text-xs text-gray-500">
+                    当前数据推荐的默认路线不是回归分析，情景模拟仅在回归型数据上启用。
+                  </p>
+                )}
+
+                {whatIfResponse && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl"
+                  >
+                    <p className="text-xs text-emerald-900 leading-relaxed whitespace-pre-wrap">
+                      {whatIfResponse}
+                    </p>
+                  </motion.div>
+                )}
+              </div>
+            </section>
+
 
             <section className={cn("bg-white rounded-2xl border border-gray-200 p-6 shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'analyze' && "hidden")}>
               <div className="flex items-center justify-between mb-6">
@@ -2470,6 +2449,40 @@ export default function App() {
               </div>
             </section>
 
+            <section className={cn(
+              "bg-white rounded-2xl border border-gray-200 p-5 shadow-sm transition-opacity",
+              workbenchPanel !== 'workspace' && "hidden",
+              activeWorkbenchSection !== 'outputs' && "hidden",
+              !result && "opacity-50 pointer-events-none"
+            )}>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <FileText size={20} className="text-emerald-600" />
+                报告与论文初稿
+              </h2>
+              <div className="space-y-3">
+                <button
+                  onClick={handleGenerateReport}
+                  disabled={reportLoading}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+                >
+                  {reportLoading ? <RefreshCw className="animate-spin" size={16} /> : <FileText size={16} />}
+                  {reportLoading ? '正在生成报告...' : '生成结构化报告'}
+                </button>
+                <button
+                  onClick={handleGeneratePaperDraft}
+                  disabled={paperLoading}
+                  className="w-full bg-gray-900 hover:bg-black text-white py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+                >
+                  {paperLoading ? <RefreshCw className="animate-spin" size={16} /> : <ChevronRight size={16} />}
+                  {paperLoading ? '正在生成初稿...' : '生成论文初稿'}
+                </button>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  输出将附带证据链、局限说明与免责声明，适合用于科研讨论和初稿整理。
+                </p>
+              </div>
+            </section>
+
+
             <section
               className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'outputs' && "hidden")}
               id={getWorkbenchSectionAnchorId('outputs')}
@@ -2604,7 +2617,7 @@ export default function App() {
                     <p className="text-xs text-gray-500 border-t border-gray-100 pt-4">{report.disclaimer}</p>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">点击左侧“生成结构化报告”后，这里会展示摘要、局限说明和证据链。</p>
+                  <p className="text-sm text-gray-500">点击上方“生成结构化报告”后，这里会展示摘要、局限说明和证据链。</p>
                 )}
               </div>
             </section>
@@ -2642,15 +2655,13 @@ export default function App() {
                     <EvidenceList items={paperDraft.evidenceMap} />
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">点击左侧“生成论文初稿”后，这里会生成结构化论文草稿和证据映射。</p>
+                  <p className="text-sm text-gray-500">点击上方“生成论文初稿”后，这里会生成结构化论文草稿和证据映射。</p>
                 )}
               </div>
             </section>
 
             <section
               className={cn("bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm", workbenchPanel !== 'workspace' && "hidden", activeWorkbenchSection !== 'collaborate' && "hidden")}
-              id={getWorkbenchSectionAnchorId('collaborate')}
-              ref={(node) => { workbenchSectionRefs.current.collaborate = node; }}
             >
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">

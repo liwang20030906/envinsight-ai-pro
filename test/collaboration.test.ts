@@ -82,3 +82,33 @@ test("collaboration store enforces role permissions", () => {
     /只有负责人或复核人可以记录正式决策/,
   );
 });
+
+test("collaboration roles are backed by the team user permission scheme", () => {
+  const store = createCollaborationStore();
+  const reviewer = store.joinRoom({
+    roomId: "room-d",
+    name: "Dana",
+    role: "reviewer",
+  });
+  const lead = store.joinRoom({
+    roomId: "room-d",
+    name: "Eli",
+    role: "lead",
+  });
+
+  const withDecision = store.addNote({
+    roomId: "room-d",
+    memberId: reviewer.member.id,
+    content: "审核员确认：公开发布前需要补充免责声明。",
+    kind: "decision",
+  });
+  assert.equal(withDecision.notes[0].kind, "decision");
+
+  const withTask = store.addTask({
+    roomId: "room-d",
+    memberId: lead.member.id,
+    title: "补充报告导出审核记录",
+  });
+  const toggled = store.toggleTask({ roomId: "room-d", taskId: withTask.tasks[0].id, memberId: reviewer.member.id });
+  assert.equal(toggled.tasks[0].status, "done");
+});

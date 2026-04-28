@@ -15,6 +15,7 @@ export type UserPermissionAction =
   | "enter-collaboration-room"
   | "manage-collaboration-room"
   | "create-collaboration-task"
+  | "update-collaboration-task"
   | "record-collaboration-decision"
   | "review-content-publish"
   | "view-audit-trail"
@@ -92,7 +93,6 @@ const BASE_ROLE_PERMISSIONS: Record<TeamUserRole, ReadonlySet<UserPermissionActi
     "export-report",
     "generate-paper-draft",
     "enter-collaboration-room",
-    "record-collaboration-decision",
   ]),
   "team-admin": new Set([
     "browse-news",
@@ -108,6 +108,7 @@ const BASE_ROLE_PERMISSIONS: Record<TeamUserRole, ReadonlySet<UserPermissionActi
     "enter-collaboration-room",
     "manage-collaboration-room",
     "create-collaboration-task",
+    "update-collaboration-task",
     "record-collaboration-decision",
     "view-audit-trail",
     "manage-team-members",
@@ -120,6 +121,7 @@ const BASE_ROLE_PERMISSIONS: Record<TeamUserRole, ReadonlySet<UserPermissionActi
     "view-model-analysis",
     "export-report",
     "enter-collaboration-room",
+    "update-collaboration-task",
     "record-collaboration-decision",
     "review-content-publish",
     "view-audit-trail",

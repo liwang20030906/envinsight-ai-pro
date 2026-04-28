@@ -6,6 +6,7 @@ import type {
   CollaborationRoom,
   CollaborationTask,
 } from "../types";
+import { canUserPerform, mapCollaborationRoleToTeamUserRole, type UserPermissionAction } from "./userPermissions";
 
 type ActorRef = {
   memberId: string;
@@ -40,16 +41,20 @@ function createActivity(
   };
 }
 
+function canCollaborationRolePerform(role: CollaborationRole, action: UserPermissionAction): boolean {
+  return canUserPerform(mapCollaborationRoleToTeamUserRole(role), action, { invitedToRoom: true }).allowed;
+}
+
 function canCreateDecision(role: CollaborationRole): boolean {
-  return role === "lead" || role === "reviewer";
+  return canCollaborationRolePerform(role, "record-collaboration-decision");
 }
 
 function canCreateTask(role: CollaborationRole): boolean {
-  return role === "lead";
+  return canCollaborationRolePerform(role, "create-collaboration-task");
 }
 
 function canToggleTask(role: CollaborationRole): boolean {
-  return role === "lead" || role === "reviewer";
+  return canCollaborationRolePerform(role, "update-collaboration-task");
 }
 
 function roleLabel(role: CollaborationRole): string {

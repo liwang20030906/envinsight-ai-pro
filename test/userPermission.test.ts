@@ -47,6 +47,7 @@ import {
   canUserPerform,
   CORE_USER_JOURNEY,
   DATA_OWNERSHIP_RULES,
+  getCollaborationRolePermissionSummary,
   getTeamUserRoleCapabilities,
   getTeamUserRoleLabel,
   mapCollaborationRoleToTeamUserRole,
@@ -94,4 +95,16 @@ test('team collaboration model documents ownership rules and journey permissions
   assert.ok(researcherCapabilities.includes('upload-data'));
   assert.ok(researcherCapabilities.includes('generate-report'));
   assert.equal(researcherCapabilities.includes('review-content-publish'), false);
+});
+
+
+test('collaboration role summaries expose scheme B labels for the UI', () => {
+  const leadSummary = getCollaborationRolePermissionSummary('lead');
+  assert.equal(leadSummary.teamRole, 'team-admin');
+  assert.equal(leadSummary.label, '团队管理员');
+  assert.ok(leadSummary.highlights.includes('管理团队成员'));
+
+  const reviewerSummary = getCollaborationRolePermissionSummary('reviewer');
+  assert.equal(reviewerSummary.teamRole, 'auditor');
+  assert.equal(reviewerSummary.label, '审核员');
 });

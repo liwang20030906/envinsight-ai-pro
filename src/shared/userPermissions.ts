@@ -200,6 +200,24 @@ export function mapCollaborationRoleToTeamUserRole(role: CollaborationRole): Tea
   return "researcher";
 }
 
+export function getCollaborationRolePermissionSummary(role: CollaborationRole): {
+  collaborationRole: CollaborationRole;
+  teamRole: TeamUserRole;
+  label: string;
+  summary: string;
+  highlights: string[];
+} {
+  const teamRole = mapCollaborationRoleToTeamUserRole(role);
+  const definition = TEAM_USER_ROLE_DEFINITIONS[teamRole];
+  return {
+    collaborationRole: role,
+    teamRole,
+    label: definition.label,
+    summary: definition.summary,
+    highlights: definition.responsibilities.slice(0, 3),
+  };
+}
+
 export function canUserPerform(
   role: TeamUserRole,
   action: UserPermissionAction,

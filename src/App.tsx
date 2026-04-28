@@ -112,6 +112,7 @@ import {
   WORKBENCH_SECTIONS,
   type WorkbenchSection,
 } from './shared/workbenchLayout';
+import { canUserPerform, getCollaborationRolePermissionSummary, mapCollaborationRoleToTeamUserRole } from './shared/userPermissions';
 import type { User as UserType } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -134,10 +135,10 @@ const SAMPLE_DATASETS = [
   { id: 'privacy-risk', title: '高风险样本', description: '包含姓名、邮箱和摘要列，可直接预览合规拦截与 AI 脱敏方案。' },
 ] as const;
 
+const COLLABORATION_ROLE_OPTIONS: CollaborationRole[] = ['lead', 'analyst', 'reviewer'];
+
 function formatRoleLabel(role: CollaborationRole): string {
-  if (role === 'lead') return '负责人';
-  if (role === 'reviewer') return '复核人';
-  return '分析师';
+  return getCollaborationRolePermissionSummary(role).label;
 }
 
 function formatModelFamilyLabel(family: string): string {
@@ -1026,9 +1027,11 @@ export default function App() {
 
   const selectedModel = result?.modelComparison?.runs.find((run) => run.id === selectedModelId) || result?.modelComparison?.runs[0] || null;
   const currentCollabMember = collabRoom?.members.find((member) => member.id === collabMemberId) || null;
-  const canCreateDecision = currentCollabMember?.role === 'lead' || currentCollabMember?.role === 'reviewer';
-  const canCreateTask = currentCollabMember?.role === 'lead';
-  const canToggleTask = currentCollabMember?.role === 'lead' || currentCollabMember?.role === 'reviewer';
+  const currentTeamRole = currentCollabMember ? mapCollaborationRoleToTeamUserRole(currentCollabMember.role) : null;
+  const selectedCollabRoleInfo = getCollaborationRolePermissionSummary(collabRole);
+  const canCreateDecision = currentTeamRole ? canUserPerform(currentTeamRole, 'record-collaboration-decision', { invitedToRoom: true }).allowed : false;
+  const canCreateTask = currentTeamRole ? canUserPerform(currentTeamRole, 'create-collaboration-task', { invitedToRoom: true }).allowed : false;
+  const canToggleTask = currentTeamRole ? canUserPerform(currentTeamRole, 'update-collaboration-task', { invitedToRoom: true }).allowed : false;
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#1A1A1A] font-sans">
@@ -1696,7 +1699,7 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                      {(['lead', 'analyst', 'reviewer'] as CollaborationRole[]).map((role) => (
+                  {COLLABORATION_ROLE_OPTIONS.map((role) => (
                     <button
                       key={role}
                       onClick={() => setCollabRole(role)}
@@ -1710,6 +1713,19 @@ export default function App() {
                       {formatRoleLabel(role)}
                     </button>
                   ))}
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">方案 B 角色权限</p>
+                  <p className="text-sm font-semibold text-gray-900">{selectedCollabRoleInfo.label}</p>
+                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">{selectedCollabRoleInfo.summary}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedCollabRoleInfo.highlights.map((item) => (
+                      <span key={item} className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -1784,7 +1800,7 @@ export default function App() {
                       <div className="rounded-2xl border border-gray-200 p-4">
                         <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">共享任务板</p>
                         <p className="text-[11px] text-gray-500 mb-3">
-                          角色权限：负责人可创建任务，负责人 / 复核人可切换状态，分析师主要负责补充备注。
+                          角色权限：团队管理员可创建任务，团队管理员 / 审核员可切换状态，研究员主要负责补充备注。
                         </p>
                         <div className="space-y-2">
                           {collabRoom.tasks.map((task) => (

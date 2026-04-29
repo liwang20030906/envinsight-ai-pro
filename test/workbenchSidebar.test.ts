@@ -38,13 +38,14 @@ test('workbench left rail only contains menu controls', () => {
 
 test('collaboration workspace renders in the right main area', () => {
   const asideEnd = appSource.indexOf('</aside>');
+  const anchorIndex = appSource.indexOf("id={getWorkbenchSectionAnchorId('collaborate')}");
   const collaborationIndex = appSource.indexOf('多人协作研究室');
-  const collaborationSnippet = appSource.slice(collaborationIndex - 500, collaborationIndex + 500);
 
   assert.ok(asideEnd >= 0, 'workbench left rail should exist');
+  assert.ok(anchorIndex > asideEnd, 'collaboration anchor should render after the left rail');
   assert.ok(collaborationIndex > asideEnd, 'collaboration panel should render after the left rail');
-  assert.match(collaborationSnippet, /id=\{getWorkbenchSectionAnchorId\('collaborate'\)\}/);
-  assert.match(collaborationSnippet, /activeWorkbenchSection !== 'collaborate'/);
+  assert.ok(collaborationIndex > anchorIndex, 'collaboration title should stay inside the anchored section');
+  assert.match(appSource.slice(anchorIndex - 300, anchorIndex + 300), /activeWorkbenchSection !== 'collaborate'/);
 });
 
 test('data preparation tools render in the right main area', () => {

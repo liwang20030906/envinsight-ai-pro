@@ -106,6 +106,7 @@ npm run dev
 
 - `产品成长录/EnvInsight_AI_Pro_科研工作台页面结构重构方案_2026-04-24.md`
 - `docs/user-system-design.md`：用户体系三套方案、当前方案评判、角色权限矩阵、数据归属规则和核心用户路径
+- `docs/workbench-flow-and-collaboration-ux.md`：科研工作台四阶段路径、协作台体验优化、角色引导和测试覆盖说明
 
 ## 可运行示例代码
 

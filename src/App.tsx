@@ -108,11 +108,12 @@ import { filterAnalysisHistory, formatHistoryShapeLabel, type AnalysisHistorySha
 import {
   getWorkbenchSectionAnchorId,
   getWorkbenchSectionState,
+  WORKBENCH_FLOW_GUIDE,
   WORKBENCH_PRIORITY_NOTES,
   WORKBENCH_SECTIONS,
   type WorkbenchSection,
 } from './shared/workbenchLayout';
-import { canUserPerform, getCollaborationRolePermissionSummary, mapCollaborationRoleToTeamUserRole } from './shared/userPermissions';
+import { canUserPerform, getCollaborationRolePermissionSummary, getRoleOnboardingGuide, mapCollaborationRoleToTeamUserRole } from './shared/userPermissions';
 import type { User as UserType } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -1029,6 +1030,8 @@ export default function App() {
   const currentCollabMember = collabRoom?.members.find((member) => member.id === collabMemberId) || null;
   const currentTeamRole = currentCollabMember ? mapCollaborationRoleToTeamUserRole(currentCollabMember.role) : null;
   const selectedCollabRoleInfo = getCollaborationRolePermissionSummary(collabRole);
+  const selectedRoleGuide = getRoleOnboardingGuide(selectedCollabRoleInfo.teamRole);
+  const currentRoleGuide = currentTeamRole ? getRoleOnboardingGuide(currentTeamRole) : selectedRoleGuide;
   const canCreateDecision = currentTeamRole ? canUserPerform(currentTeamRole, 'record-collaboration-decision', { invitedToRoom: true }).allowed : false;
   const canCreateTask = currentTeamRole ? canUserPerform(currentTeamRole, 'create-collaboration-task', { invitedToRoom: true }).allowed : false;
   const canToggleTask = currentTeamRole ? canUserPerform(currentTeamRole, 'update-collaboration-task', { invitedToRoom: true }).allowed : false;
@@ -1432,6 +1435,59 @@ export default function App() {
               </div>
             </section>
 
+            <section className={cn("bg-white rounded-2xl border border-gray-200 p-5 shadow-sm", workbenchPanel !== 'workspace' && "hidden")}>
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">本轮工作路径</p>
+                  <h3 className="text-xl font-bold text-gray-900 mt-1">按“准备 → 分析 → 产出 → 留痕”推进，不跳步</h3>
+                  <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                    每个阶段都明确“完成标准”和“风险控制”，让你知道下一步该点哪里、做到什么程度再往后走。
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+                  当前：{WORKBENCH_SECTIONS.find((section) => section.id === activeWorkbenchSection)?.shortTitle}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                {WORKBENCH_FLOW_GUIDE.map((section, index) => {
+                  const state = getWorkbenchSectionState(activeWorkbenchSection, section.id);
+                  return (
+                    <button
+                      key={section.id}
+                      type="button"
+                      onClick={() => navigateToWorkbenchSection(section.id)}
+                      className={cn(
+                        "text-left rounded-2xl border p-4 transition-all",
+                        state === 'current'
+                          ? "border-emerald-300 bg-emerald-50 shadow-sm"
+                          : state === 'completed'
+                            ? "border-emerald-100 bg-white"
+                            : "border-gray-200 bg-gray-50 hover:border-emerald-200 hover:bg-white"
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className={cn(
+                          "inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-bold",
+                          state === 'current' ? "bg-emerald-600 text-white" : "bg-white border border-gray-200 text-gray-500"
+                        )}>
+                          {index + 1}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          {state === 'current' ? '当前阶段' : state === 'completed' ? '已走过' : '下一步'}
+                        </span>
+                      </div>
+                      <p className="text-sm font-bold text-gray-900 mt-3">{section.shortTitle}</p>
+                      <p className="text-xs text-gray-600 mt-2 leading-relaxed">{section.goal}</p>
+                      <div className="mt-3 rounded-xl bg-white/80 border border-white px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">完成标准</p>
+                        <p className="text-xs text-gray-700 mt-1 leading-relaxed">{section.doneWhen}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
             {workbenchPanel === 'history' && (
               <section className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
                 <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
@@ -1748,16 +1804,42 @@ export default function App() {
               id={getWorkbenchSectionAnchorId('collaborate')}
               ref={(node) => { workbenchSectionRefs.current.collaborate = node; }}
             >
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <MessageSquare size={20} className="text-emerald-600" />
-                多人协作研究室
-              </h2>
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">协作留痕</p>
+                  <h2 className="text-xl font-bold text-gray-900 mt-1 flex items-center gap-2">
+                    <MessageSquare size={20} className="text-emerald-600" />
+                    多人协作研究室
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                    先创建或加入房间，再按角色做任务、备注和决策；所有关键动作都会进入协作历史。
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-2 min-w-[260px]">
+                  <StatusChip title="房间" value={collabRoom ? '已加入' : '待加入'} tone={collabRoom ? 'success' : 'muted'} />
+                  <StatusChip title="身份" value={currentTeamRole ? currentRoleGuide.role === 'team-admin' ? '管理员' : currentRoleGuide.role === 'auditor' ? '审核员' : '研究员' : selectedCollabRoleInfo.label} tone={collabRoom ? 'success' : 'muted'} />
+                  <StatusChip title="任务" value={collabRoom ? `${collabRoom.tasks.filter((task) => task.status === 'done').length}/${collabRoom.tasks.length}` : '待创建'} tone={collabRoom?.tasks.some((task) => task.status === 'done') ? 'success' : 'muted'} />
+                </div>
+              </div>
               <div className="space-y-4">
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
                   <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-1">协作策略</p>
                   <p className="text-sm text-gray-700 leading-relaxed">
                     采用“房间码 + 共享任务板 + 决策备注流 + 轮询同步”的轻协作策略，适合研究小组多人并行推进建模、审查和论文整理。
                   </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { title: '1. 建房间', copy: '输入房间号，或直接使用示例/当前数据集房间。' },
+                    { title: '2. 选身份', copy: '负责人管任务，研究员补分析，审核员做复核决策。' },
+                    { title: '3. 留痕迹', copy: '任务、备注、正式决策和历史记录分开沉淀。' },
+                  ].map((item) => (
+                    <div key={item.title} className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                      <p className="text-xs text-gray-600 mt-2 leading-relaxed">{item.copy}</p>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1781,33 +1863,68 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  <button
+                    onClick={() => setCollabRoomId('envinsight-demo-room')}
+                    className="text-left rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 hover:border-emerald-200 hover:bg-white transition-all"
+                  >
+                    <p className="text-xs font-bold text-gray-900">使用示例房间</p>
+                    <p className="text-[11px] text-gray-500 mt-1">快速预览成员、任务和备注流。</p>
+                  </button>
+                  {result?.trace?.datasetId && (
+                    <button
+                      onClick={() => setCollabRoomId(result.trace!.datasetId)}
+                      className="text-left rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 hover:border-emerald-200 hover:bg-white transition-all"
+                    >
+                      <p className="text-xs font-bold text-gray-900">当前数据集房间</p>
+                      <p className="text-[11px] text-gray-500 mt-1">用数据集 ID 直接作为协作房间号。</p>
+                    </button>
+                  )}
+                  {importedLead && (
+                    <button
+                      onClick={() => setCollabTaskInput(importedLead.collaborationTasks[0] || '')}
+                      className="text-left rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 hover:border-emerald-200 hover:bg-white transition-all"
+                    >
+                      <p className="text-xs font-bold text-gray-900">带入论文任务</p>
+                      <p className="text-[11px] text-gray-500 mt-1">把导入论文拆成第一条协作任务。</p>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   {COLLABORATION_ROLE_OPTIONS.map((role) => (
                     <button
                       key={role}
                       onClick={() => setCollabRole(role)}
                       className={cn(
-                        "px-3 py-2 rounded-full text-xs font-bold uppercase tracking-widest border transition-all",
+                        "rounded-2xl border px-4 py-3 text-left transition-all",
                         collabRole === role
                           ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                          : "border-gray-200 text-gray-500 hover:border-gray-300"
+                          : "border-gray-200 text-gray-600 hover:border-gray-300 bg-white"
                       )}
                     >
-                      {formatRoleLabel(role)}
+                      <p className="text-sm font-bold">{formatRoleLabel(role)}</p>
+                      <p className="text-[11px] mt-1 leading-relaxed">
+                        {getCollaborationRolePermissionSummary(role).summary}
+                      </p>
                     </button>
                   ))}
                 </div>
 
-                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">方案 B 角色权限</p>
-                  <p className="text-sm font-semibold text-gray-900">{selectedCollabRoleInfo.label}</p>
-                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">{selectedCollabRoleInfo.summary}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {selectedCollabRoleInfo.highlights.map((item) => (
-                      <span key={item} className="px-2 py-1 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500">
-                        {item}
-                      </span>
-                    ))}
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4">
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">方案 B 角色上手指引</p>
+                      <p className="text-sm font-semibold text-gray-900">{selectedCollabRoleInfo.label}：{selectedRoleGuide.startWith}</p>
+                      <p className="text-xs text-gray-600 mt-1 leading-relaxed">{selectedCollabRoleInfo.summary}</p>
+                    </div>
+                    <p className="text-xs text-emerald-700 bg-white border border-emerald-100 rounded-xl px-3 py-2 leading-relaxed">
+                      下一步：{selectedRoleGuide.nextGrowth}
+                    </p>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <KeyValueList title="当前可以做" items={selectedRoleGuide.canDoNow} />
+                    <KeyValueList title="需要注意" items={selectedRoleGuide.watchOut} />
                   </div>
                 </div>
 
@@ -1819,20 +1936,9 @@ export default function App() {
                   >
                     {collabLoading ? '正在加入...' : '加入 / 创建协作房间'}
                   </button>
-                  <button
-                    onClick={() => setCollabRoomId('envinsight-demo-room')}
-                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:border-emerald-200"
-                  >
-                    使用示例房间
-                  </button>
-                  {result?.trace?.datasetId && (
-                    <button
-                      onClick={() => setCollabRoomId(result.trace!.datasetId)}
-                      className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:border-emerald-200"
-                    >
-                      使用当前数据集房间
-                    </button>
-                  )}
+                  <p className="text-xs text-gray-500 self-center">
+                    加入后会按所选身份展示任务、决策和审核能力。
+                  </p>
                 </div>
 
                 {collabRoom ? (
@@ -1881,10 +1987,17 @@ export default function App() {
                       </div>
 
                       <div className="rounded-2xl border border-gray-200 p-4">
-                        <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">共享任务板</p>
-                        <p className="text-[11px] text-gray-500 mb-3">
-                          角色权限：团队管理员可创建任务，团队管理员 / 审核员可切换状态，研究员主要负责补充备注。
-                        </p>
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">共享任务板</p>
+                            <p className="text-[11px] text-gray-500 mt-1">
+                              角色权限：团队管理员可创建任务，团队管理员 / 审核员可切换状态，研究员主要负责补充备注。
+                            </p>
+                          </div>
+                          <span className="px-2 py-1 rounded-full bg-gray-50 border border-gray-200 text-[10px] font-bold text-gray-500">
+                            {collabRoom.tasks.filter((task) => task.status === 'done').length}/{collabRoom.tasks.length} 完成
+                          </span>
+                        </div>
                         <div className="space-y-2">
                           {collabRoom.tasks.map((task) => (
                             <button
@@ -1906,6 +2019,17 @@ export default function App() {
                             </button>
                           ))}
                         </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {['复核字段脱敏', '补充模型局限', '整理论文结果段'].map((task) => (
+                            <button
+                              key={task}
+                              onClick={() => setCollabTaskInput(task)}
+                              className="px-3 py-1.5 rounded-full border border-gray-200 bg-gray-50 text-[10px] font-bold text-gray-500 hover:border-emerald-200 hover:text-emerald-700"
+                            >
+                              {task}
+                            </button>
+                          ))}
+                        </div>
                         <div className="mt-3 flex gap-2">
                           <input
                             value={collabTaskInput}
@@ -1921,11 +2045,24 @@ export default function App() {
                             添加
                           </button>
                         </div>
+                        {!canCreateTask && (
+                          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mt-3">
+                            当前身份不能直接创建任务，可以先把任务写进备注，交给团队管理员确认。
+                          </p>
+                        )}
                       </div>
                     </div>
 
                     <div className="rounded-2xl border border-gray-200 p-4">
-                      <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">研究备注流</p>
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">研究备注流</p>
+                          <p className="text-[11px] text-gray-500 mt-1">普通备注用于沟通，正式决策只给团队管理员和审核员。</p>
+                        </div>
+                        <span className="px-2 py-1 rounded-full bg-gray-50 border border-gray-200 text-[10px] font-bold text-gray-500">
+                          {collabRoom.notes.length} 条
+                        </span>
+                      </div>
                       <div className="space-y-2 max-h-60 overflow-y-auto">
                         {collabRoom.notes.map((note) => (
                           <div key={note.id} className="rounded-xl bg-gray-50 px-3 py-3 border border-gray-200">
@@ -1935,6 +2072,21 @@ export default function App() {
                             </div>
                             <p className="text-sm text-gray-600 mt-2 leading-relaxed">{note.content}</p>
                           </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {[
+                          '我已完成数据和字段风险初查。',
+                          '建议补充模型局限与样本偏差说明。',
+                          '需要审核员确认是否可以进入公开编辑稿。'
+                        ].map((note) => (
+                          <button
+                            key={note}
+                            onClick={() => setCollabNoteInput(note)}
+                            className="px-3 py-1.5 rounded-full border border-gray-200 bg-gray-50 text-[10px] font-bold text-gray-500 hover:border-emerald-200 hover:text-emerald-700"
+                          >
+                            {note}
+                          </button>
                         ))}
                       </div>
                       <textarea
@@ -1960,6 +2112,11 @@ export default function App() {
                           标记为决策
                         </button>
                       </div>
+                      {!canCreateDecision && (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mt-3">
+                          当前身份可以发送备注，但不能标记正式决策；正式决策需要团队管理员或审核员留痕。
+                        </p>
+                      )}
                     </div>
 
                     <div className="rounded-2xl border border-gray-200 p-4">

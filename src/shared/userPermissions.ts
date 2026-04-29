@@ -48,6 +48,14 @@ export interface RoleDefinition {
   restrictions: string[];
 }
 
+export interface RoleOnboardingGuide {
+  role: TeamUserRole;
+  startWith: string;
+  canDoNow: string[];
+  watchOut: string[];
+  nextGrowth: string;
+}
+
 export const TEAM_USER_ROLE_DEFINITIONS: Record<TeamUserRole, RoleDefinition> = {
   "public-user": {
     role: "public-user",
@@ -128,6 +136,37 @@ const BASE_ROLE_PERMISSIONS: Record<TeamUserRole, ReadonlySet<UserPermissionActi
   ]),
 };
 
+export const ROLE_ONBOARDING_GUIDES: Record<TeamUserRole, RoleOnboardingGuide> = {
+  "public-user": {
+    role: "public-user",
+    startWith: "先浏览公开资讯，再把感兴趣论文导入个人草稿。",
+    canDoNow: ["浏览环境健康资讯", "导入论文线索", "使用示例数据体验流程"],
+    watchOut: ["不能上传真实项目数据", "进入协作房间需要邀请", "不能审核公开发布内容"],
+    nextGrowth: "如果需要做真实研究分析，升级为研究员。",
+  },
+  researcher: {
+    role: "researcher",
+    startWith: "从数据准备开始，先上传数据并完成合规预审。",
+    canDoNow: ["上传数据", "查看模型分析", "生成报告和论文初稿", "参与协作研究室"],
+    watchOut: ["高风险报告导出需要审核", "公开发布前必须提交复核", "只查看授权范围内原始数据"],
+    nextGrowth: "如果需要管理成员和任务，交给团队管理员配置。",
+  },
+  "team-admin": {
+    role: "team-admin",
+    startWith: "先创建协作房间和任务板，明确成员分工。",
+    canDoNow: ["管理团队成员", "创建协作任务", "查看团队审计轨迹", "组织报告交付"],
+    watchOut: ["不能绕过合规审查", "公开发布仍需审核员确认", "角色变更要留痕"],
+    nextGrowth: "下一步补齐项目空间、成员邀请和数据授权配置。",
+  },
+  auditor: {
+    role: "auditor",
+    startWith: "优先查看合规结果、报告导出和公开发布风险。",
+    canDoNow: ["复核合规审查", "更新任务状态", "记录正式决策", "审核内容发布"],
+    watchOut: ["原始数据只在审核目的下查看", "审核结论必须留痕", "不负责日常建模操作"],
+    nextGrowth: "后续可扩展为审核队列、发布门禁和风险分级看板。",
+  },
+};
+
 export const DATA_OWNERSHIP_RULES: Record<DataOwnershipScope, string[]> = {
   public: ["所有用户可浏览", "必须保留公开来源和证据链", "工作台结论公开前必须审核"],
   personal: ["默认仅上传者可见", "分享至协作房间前需要确认", "导出报告仍需合规提示"],
@@ -192,6 +231,10 @@ export function getTeamUserRoleLabel(role: TeamUserRole): string {
 
 export function getTeamUserRoleCapabilities(role: TeamUserRole): UserPermissionAction[] {
   return Array.from(BASE_ROLE_PERMISSIONS[role]);
+}
+
+export function getRoleOnboardingGuide(role: TeamUserRole): RoleOnboardingGuide {
+  return ROLE_ONBOARDING_GUIDES[role];
 }
 
 export function mapCollaborationRoleToTeamUserRole(role: CollaborationRole): TeamUserRole {
